@@ -144,6 +144,19 @@ create policy "steps_delete" on public.steps for delete
   using (public.is_family_member(recipe_id));
 
 -- ============================================================
+-- Права на таблицы/последовательности/функции для ролей API.
+-- Таблицы созданы через миграцию, а не через дашборд, поэтому
+-- Supabase не выдал гранты автоматически (если «Grant API access»
+-- выключен). Выдаём явно. Безопасность на уровне строк
+-- обеспечивает RLS-политики выше.
+-- ============================================================
+grant usage on schema public to anon, authenticated, service_role;
+
+grant all on all tables    in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all functions in schema public to anon, authenticated, service_role;
+
+-- ============================================================
 -- Триггер авто-обновления updated_at у рецептов
 -- ============================================================
 create or replace function public.touch_updated_at()

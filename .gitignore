@@ -18,3 +18,13 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Supabase CLI temp files
+supabase/.temp/
+supabase/.env
+supabase/.env.local
+
+# Build artifacts emitted by tsc -b
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

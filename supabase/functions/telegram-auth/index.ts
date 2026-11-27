@@ -25,29 +25,34 @@ Deno.serve(async (req: Request) => {
     const { initData, familyName } = await req.json();
     if (!initData) return json({ error: 'initData missing' }, 400);
 
-    const user = await validateInitData(initData);
-    if (!user) return json({ error: 'invalid initData signature' }, 401);
+    const validated = await validateInitData(initData);
+    if (!validated) return json({ error: 'invalid initData signature' }, 401);
+    const tg = validated.user; // собственно Telegram-пользователь
+    const startParam = validated.start_param;
 
     // --- Единый auth-аккаунт на основе telegram_id ---
-    const email = `tg_${user.id}@telegram.local`;
+    const email = `tg_${tg.id}@telegram.local`;
+    // Детерминированный пароль (секретный: зависит от BOT_TOKEN), чтобы
+    // можно было входить в один и тот же аккаунт при каждом входе.
+    const password = await hex(await hmac(`fam:${tg.id}`, Deno.env.get('BOT_TOKEN')!));
     let authId: string;
 
-    const { data: existing } = await supabase.auth.admin.getUserByEmail(email);
-    if (existing?.user) {
-      authId = existing.user.id;
+    const existing = await findUserByEmail(supabase, email);
+    if (existing) {
+      authId = existing.id;
     } else {
       const { data: created, error: createErr } = await supabase.auth.admin.createUser({
         email,
-        password: crypto.randomUUID(),
+        password,
         email_confirm: true,
-        user_metadata: { telegram_id: user.id },
+        user_metadata: { telegram_id: tg.id },
       });
       if (createErr) return json({ error: createErr.message }, 500);
       authId = created!.user.id;
     }
 
     // --- Профиль и семья ---
-    const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || 'Гость';
+    const name = [tg.first_name, tg.last_name].filter(Boolean).join(' ').trim() || 'Гость';
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -57,18 +62,31 @@ Deno.serve(async (req: Request) => {
 
     let familyId = profile?.family_id ?? null;
     if (!familyId) {
-      familyId = await ensureFamily(supabase, user.start_param ?? null, familyName);
+      familyId = await ensureFamily(supabase, startParam ?? null, familyName);
     }
     await supabase.from('profiles').upsert(
-      { id: authId, telegram_id: user.id, name, family_id: familyId },
+      { id: authId, telegram_id: tg.id, name, family_id: familyId },
       { onConflict: 'id' },
     );
 
     // --- Токен доступа для клиента ---
-    const { data: session, error: tokErr } = await supabase.auth.admin.createSessionToken(authId);
-    if (tokErr) return json({ error: tokErr.message }, 500);
+    // sign-in делаем через анонимный ключ: GoTrue не выдаёт пользовательскую
+    // сессию в контексте service_role-клиента.
+    const anonKey =
+      Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY');
+    const authClient = anonKey
+      ? createClient(Deno.env.get('SUPABASE_URL')!, anonKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        })
+      : supabase;
+    const { data: signInData, error: signInErr } = await authClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (signInErr) return json({ error: signInErr.message }, 500);
+    const accessToken = signInData.session?.access_token;
 
-    return json({ access_token: session.token, user: { id: authId, name, family_id: familyId } });
+    return json({ access_token: accessToken, user: { id: authId, name, family_id: familyId } });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }
@@ -79,6 +97,21 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * Поиск auth-пользователя по email через admin API.
+ * Метод getUserByEmail удалён из современного supabase-js, поэтому
+ * ищем по listUsers (для семейного приложения число пользователей мало).
+ */
+async function findUserByEmail(
+  supabase: ReturnType<typeof createClient>,
+  email: string,
+): Promise<{ id: string } | null> {
+  const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) throw new Error(error.message);
+  const found = (data?.users ?? []).find((u) => u.email === email);
+  return found ? { id: found.id } : null;
 }
 
 // --- Валидация initData по схеме Telegram Bot API ---
@@ -122,10 +155,14 @@ async function validateInitData(initData: string): Promise<ParsedInit | null> {
   return { user: JSON.parse(rawUser) as TgUser, start_param: params.get('start_param') ?? undefined };
 }
 
-async function hmac(key: string, data: string): Promise<Uint8Array> {
+async function hmac(key: string | Uint8Array, data: string): Promise<Uint8Array> {
+  // Ключ может быть строкой ("WebAppData") либо сырыми байтами (secret_key
+  // из первого HMAC). TextEncoder.encode() строкифицирует Uint8Array в
+  // "184,198,…", что ломает подпись — поэтому байты используем как есть.
+  const keyBytes = typeof key === 'string' ? new TextEncoder().encode(key) : key;
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(key),
+    keyBytes,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
