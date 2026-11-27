@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Не секреты: publishable-ключ по замыслу публичный (используется на клиенте).
+      VITE_SUPABASE_URL: https://qdcnytqsvukdjqryfmug.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_Pfl0irQO4DSvDh1I2ASwlw_myxkGcnn
+      VITE_SUPABASE_FUNCTION_URL: https://qdcnytqsvukdjqryfmug.supabase.co/functions/v1/telegram-auth
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          # Проект на Pages живёт в подпапке /fam-recipes-bot/
+          VITE_BASE: /fam-recipes-bot/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
