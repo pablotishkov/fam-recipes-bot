@@ -96,8 +96,13 @@ Deno.serve(async (req: Request) => {
     });
     if (signInErr) return json({ error: signInErr.message }, 500);
     const accessToken = signInData.session?.access_token;
+    const refreshToken = signInData.session?.refresh_token;
 
-    return json({ access_token: accessToken, user: { id: authId, name, family_id: familyId } });
+    return json({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: { id: authId, name, family_id: familyId },
+    });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }

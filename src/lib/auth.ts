@@ -5,6 +5,7 @@ import { getInitData } from './telegram';
 /** Ответ Edge Function telegram-auth. */
 interface TelegramAuthResponse {
   access_token: string;
+  refresh_token?: string;
   user: { id: string; name: string; family_id: string | null };
 }
 
@@ -49,8 +50,11 @@ export async function authenticateWithTelegram(
 
   const data = (await res.json()) as TelegramAuthResponse;
 
-  // Токен без refresh (edge-функция выдаёт короткоживущий access_token).
-  await supabase.auth.setSession({ access_token: data.access_token, refresh_token: '' });
+  // Сохраняем сессию (access + refresh), чтобы токен мог обновляться и не протухал.
+  await supabase.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token ?? '',
+  });
 
   // Данные семьи для отображения (имя + код-приглашение) — из базы
   // (RLS пускает к своей семье).
