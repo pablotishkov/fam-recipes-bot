@@ -6,9 +6,9 @@ import {
   getTelegramUser,
   initTelegram,
 } from './lib/telegram';
-import { isSupabaseConfigured } from './lib/supabase';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { authenticateWithTelegram, signOutFromSupabase } from './lib/auth';
-import { deleteRecipe, getFamily, getProducts, getRecipes, getUser, leaveFamily, saveRecipe } from './lib/store';
+import { deleteRecipe, getFamily, getProducts, getRecipes, getUser, leaveFamily, saveRecipe, updateFamilyName } from './lib/store';
 import { Onboarding } from './screens/Onboarding';
 import { ListScreen } from './screens/ListScreen';
 import { RecipeForm } from './screens/RecipeForm';
@@ -95,7 +95,18 @@ export default function App() {
 
   const recipes = getRecipes();
   const products = getProducts();
-  const family = user?.familyId ? getFamily(user.familyId) ?? null : null;
+  // В Supabase-режиме семья живёт в БД и приходит в SessionUser (имя + код);
+  // в демо-режиме — из localStorage.
+  const family = user?.familyId
+    ? isSupabaseConfigured
+      ? {
+          id: user.familyId,
+          name: user.familyName || 'Моя семья',
+          inviteCode: user.inviteCode || '',
+          createdAt: 0,
+        }
+      : getFamily(user.familyId) ?? null
+    : null;
 
   const openList = useCallback(() => {
     setView({ name: 'list' });
@@ -141,6 +152,24 @@ export default function App() {
     setView({ name: 'onboarding' });
   }, []);
 
+  const handleRename = useCallback(
+    (name: string) => {
+      if (!user?.familyId) return;
+      if (isSupabaseConfigured) {
+        supabase
+          ?.from('families')
+          .update({ name })
+          .eq('id', user.familyId)
+          .then(() => {
+            setUser({ ...user, familyName: name });
+          });
+      } else {
+        updateFamilyName(user.familyId, name);
+      }
+    },
+    [user],
+  );
+
   if (authState === 'loading') {
     return <AuthLoading />;
   }
@@ -160,7 +189,15 @@ export default function App() {
 
   if (view.name === 'family') {
     // Если семьи нет (не должно происходить) — показываем список.
-    if (family) return <FamilyScreen family={family} onBack={openList} onLeave={handleLeave} />;
+    if (family)
+      return (
+        <FamilyScreen
+          family={family}
+          onBack={openList}
+          onLeave={handleLeave}
+          onRename={handleRename}
+        />
+      );
   }
 
   if (view.name === 'form') {

@@ -89,4 +89,6 @@ export interface SessionUser {
   name: string;
   familyId?: string;
   familyName?: string;
+  /** Код-приглашение семьи (в Supabase-режиме берётся из БД). */
+  inviteCode?: string;
 }

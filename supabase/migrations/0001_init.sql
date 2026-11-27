@@ -104,6 +104,10 @@ create policy "products_insert" on public.products for insert with check (true);
 create policy "families_read" on public.families for select
   using (id in (select family_id from public.profiles where id = auth.uid()));
 
+-- Семьи: участники могут переименовать свою семью.
+create policy "families_update" on public.families for update
+  using (id in (select family_id from public.profiles where id = auth.uid()));
+
 -- Профили: читают все (для имён), пишет только свой.
 create policy "profiles_read" on public.profiles for select using (true);
 create policy "profiles_insert" on public.profiles for insert

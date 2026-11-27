@@ -41,15 +41,18 @@ export async function authenticateWithTelegram(): Promise<SessionUser | null> {
   // Токен без refresh (edge-функция выдаёт короткоживущий access_token).
   await supabase.auth.setSession({ access_token: data.access_token, refresh_token: '' });
 
-  // Имя семьи для отображения — берём из базы (RLS пускает к своей семье).
+  // Данные семьи для отображения (имя + код-приглашение) — из базы
+  // (RLS пускает к своей семье).
   let familyName: string | undefined;
+  let inviteCode: string | undefined;
   if (data.user.family_id) {
     const { data: family } = await supabase
       .from('families')
-      .select('name')
+      .select('name, invite_code')
       .eq('id', data.user.family_id)
       .maybeSingle();
     familyName = family?.name;
+    inviteCode = family?.invite_code;
   }
 
   const user: SessionUser = {
@@ -57,6 +60,7 @@ export async function authenticateWithTelegram(): Promise<SessionUser | null> {
     name: data.user.name,
     familyId: data.user.family_id ?? undefined,
     familyName,
+    inviteCode,
   };
   return user;
 }

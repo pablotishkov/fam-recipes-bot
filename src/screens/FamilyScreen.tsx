@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import type { Family } from '../types';
-import { updateFamilyName } from '../lib/store';
 
 interface Props {
   family: Family;
   onBack: () => void;
   onLeave: () => void;
+  /** Переименование семьи (в Supabase-режиме — в БД, иначе — localStorage). */
+  onRename: (name: string) => void;
 }
 
-export function FamilyScreen({ family, onBack, onLeave }: Props) {
+export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
   const [name, setName] = useState(family.name);
   const [saved, setSaved] = useState(false);
 
   function handleSave() {
     if (!name.trim()) return;
-    updateFamilyName(family.id, name);
+    onRename(name.trim());
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   }
