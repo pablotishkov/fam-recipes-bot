@@ -7,9 +7,10 @@ import {
   initTelegram,
 } from './lib/telegram';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import { authenticateWithTelegram, signOutFromSupabase } from './lib/auth';
+import { authenticateWithTelegram, signOutFromSupabase, type FamilyAction } from './lib/auth';
 import { deleteRecipe, getFamily, getProducts, getRecipes, getUser, leaveFamily, saveRecipe, updateFamilyName } from './lib/store';
 import { Onboarding } from './screens/Onboarding';
+import { FamilySetup } from './screens/FamilySetup';
 import { ListScreen } from './screens/ListScreen';
 import { RecipeForm } from './screens/RecipeForm';
 import { RecipeView } from './screens/RecipeView';
@@ -18,6 +19,7 @@ import { FamilyScreen } from './screens/FamilyScreen';
 
 type View =
   | { name: 'onboarding' }
+  | { name: 'family-setup' }
   | { name: 'list' }
   | { name: 'form'; recipeId?: string }
   | { name: 'view'; recipeId: string }
@@ -65,7 +67,7 @@ export default function App() {
         .then((u) => {
           if (u) {
             setUser(u);
-            setView({ name: 'list' });
+            setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
           }
           setAuthState('idle');
         })
@@ -83,7 +85,7 @@ export default function App() {
       .then((u) => {
         if (u) {
           setUser(u);
-          setView({ name: 'list' });
+          setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
         }
         setAuthState('idle');
       })
@@ -91,6 +93,15 @@ export default function App() {
         setAuthError(e.message);
         setAuthState('error');
       });
+  }, []);
+
+  // Создание семьи или вступление по коду (Supabase-режим).
+  const handleFamilySetup = useCallback(async (action: FamilyAction) => {
+    const u = await authenticateWithTelegram(action);
+    if (u) {
+      setUser(u);
+      setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
+    }
   }, []);
 
   const recipes = getRecipes();
@@ -139,18 +150,24 @@ export default function App() {
 
   const handleLeave = useCallback(() => {
     if (isSupabaseConfigured) {
-      // В Supabase-режиме семья живёт на сервере — просто сбрасываем сессию
-      // и заново проходим вход (состояние семьи сохраняется на сервере).
-      signOutFromSupabase().then(() => {
-        leaveFamily();
-        window.location.reload();
-      });
+      // В Supabase-режиме отвязываем профиль от семьи (RLS позволяет менять свой),
+      // выходим из сессии и перезаходим — тогда вернёмся на экран создания/входа.
+      const uid = user?.id;
+      const p = uid
+        ? supabase?.from('profiles').update({ family_id: null }).eq('id', uid)
+        : Promise.resolve();
+      (p ?? Promise.resolve())
+        .then(() => signOutFromSupabase())
+        .then(() => {
+          leaveFamily();
+          window.location.reload();
+        });
       return;
     }
     leaveFamily();
     setUser(null);
     setView({ name: 'onboarding' });
-  }, []);
+  }, [user]);
 
   const handleRename = useCallback(
     (name: string) => {
@@ -175,6 +192,10 @@ export default function App() {
   }
   if (authState === 'error') {
     return <AuthError message={authError} onRetry={retryAuth} />;
+  }
+
+  if (view.name === 'family-setup') {
+    return <FamilySetup onSubmit={handleFamilySetup} />;
   }
 
   if (view.name === 'onboarding' || !user) {

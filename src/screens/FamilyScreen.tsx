@@ -13,6 +13,9 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
   const [name, setName] = useState(family.name);
   const [saved, setSaved] = useState(false);
 
+  // Ссылка-приглашение, по которой родные вступят в семью по коду (startapp).
+  const inviteLink = `https://t.me/FamReceiptsBot/app?startapp=${family.inviteCode}`;
+
   function handleSave() {
     if (!name.trim()) return;
     onRename(name.trim());
@@ -22,9 +25,9 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
 
   async function copyCode() {
     try {
-      await navigator.clipboard.writeText(family.inviteCode);
+      await navigator.clipboard.writeText(inviteLink);
     } catch {
-      // Код и так виден на экране.
+      // Ссылка и так видна на экране.
     }
   }
 
@@ -61,7 +64,7 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
       <div className="section-title">Код-приглашение</div>
       <div className="card" style={{ textAlign: 'center' }}>
         <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>
-          По этому коду родные войдут в семью
+          По этой ссылке родные вступят в семью
         </div>
         <div
           style={{
@@ -76,8 +79,19 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
         >
           {family.inviteCode}
         </div>
+        <div
+          className="muted"
+          style={{
+            fontSize: 12,
+            wordBreak: 'break-all',
+            marginBottom: 10,
+            color: 'var(--link, #2a6fd8)',
+          }}
+        >
+          {inviteLink}
+        </div>
         <button className="btn btn-block" onClick={copyCode}>
-          Скопировать код
+          Скопировать ссылку-приглашение
         </button>
       </div>
 

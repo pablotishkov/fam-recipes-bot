@@ -8,16 +8,27 @@ interface TelegramAuthResponse {
   user: { id: string; name: string; family_id: string | null };
 }
 
+/** Действие по семье при входе: создать (имя) или вступить (код). */
+export interface FamilyAction {
+  familyName?: string;
+  joinCode?: string;
+}
+
 /**
  * Аутентификация через Telegram.
  *
  * Отправляет подписанный `initData` в Edge Function, которая проверяет
- * HMAC-подпись, находит/создаёт пользователя Supabase и семью, и возвращает
- * `access_token`. Затем сохраняем сессию и возвращаем пользователя приложения.
+ * HMAC-подпись, находит/создаёт пользователя Supabase и (при необходимости)
+ * создаёт/вступает в семью. Возвращает `access_token` и пользователя.
+ *
+ * Если у пользователя нет семьи и действие не задано, `family_id` будет null —
+ * фронтенд показывает экран создания/входа в семью.
  *
  * Возвращает null, если Supabase не настроен (демо-режим).
  */
-export async function authenticateWithTelegram(): Promise<SessionUser | null> {
+export async function authenticateWithTelegram(
+  familyAction?: FamilyAction,
+): Promise<SessionUser | null> {
   if (!supabase) return null;
 
   const initData = getInitData();
@@ -28,7 +39,7 @@ export async function authenticateWithTelegram(): Promise<SessionUser | null> {
   const res = await fetch(telegramAuthFunctionUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ initData }),
+    body: JSON.stringify({ initData, ...familyAction }),
   });
 
   if (!res.ok) {

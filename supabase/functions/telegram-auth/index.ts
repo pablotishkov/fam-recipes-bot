@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
-    const { initData, familyName } = await req.json();
+    const { initData, familyName, joinCode } = await req.json();
     if (!initData) return json({ error: 'initData missing' }, 400);
 
     const validated = await validateInitData(initData);
@@ -62,7 +62,18 @@ Deno.serve(async (req: Request) => {
 
     let familyId = profile?.family_id ?? null;
     if (!familyId) {
-      familyId = await ensureFamily(supabase, startParam ?? null, familyName);
+      // Приоритет: код из startapp-ссылки, затем явный ввод кода, затем создание по имени.
+      const codeToJoin = startParam ?? joinCode ?? null;
+      if (codeToJoin) {
+        familyId = await findFamilyIdByCode(supabase, codeToJoin);
+        if (!familyId && joinCode) {
+          // Пользователь явно ввёл неверный код — сообщаем.
+          return json({ error: 'Семья с таким кодом не найдена' }, 404);
+        }
+      }
+      if (!familyId && familyName) {
+        familyId = await createFamily(supabase, familyName);
+      }
     }
     await supabase.from('profiles').upsert(
       { id: authId, telegram_id: tg.id, name, family_id: familyId },
@@ -176,25 +187,29 @@ async function hex(bytes: Uint8Array): Promise<string> {
 }
 
 // --- Создание/вступление в семью ---
-async function ensureFamily(
+
+/** Поиск семьи по коду-приглашению. */
+async function findFamilyIdByCode(
   supabase: ReturnType<typeof createClient>,
-  startParam: string | null,
-  familyName?: string,
+  code: string,
 ): Promise<string | null> {
-  // start_param = код-приглашение, переданный из бота (/start?startapp=CODE)
-  if (startParam) {
-    const { data: fam } = await supabase
-      .from('families')
-      .select('id')
-      .eq('invite_code', startParam.toUpperCase())
-      .maybeSingle();
-    if (fam) return fam.id;
-  }
-  // Нет семьи — создаём новую с именем и кодом-приглашением.
+  const { data: fam } = await supabase
+    .from('families')
+    .select('id')
+    .eq('invite_code', code.trim().toUpperCase())
+    .maybeSingle();
+  return fam?.id ?? null;
+}
+
+/** Создание новой семьи с именем и кодом-приглашением. */
+async function createFamily(
+  supabase: ReturnType<typeof createClient>,
+  familyName: string,
+): Promise<string | null> {
   const code = generateCode();
   const { data: created } = await supabase
     .from('families')
-    .insert({ invite_code: code, name: familyName?.trim() || 'Моя семья' })
+    .insert({ invite_code: code, name: familyName.trim() || 'Моя семья' })
     .select('id')
     .single();
   return created?.id ?? null;
