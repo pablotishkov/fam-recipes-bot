@@ -81,7 +81,6 @@ export function RecipeView({ recipe, products, onEdit, onDelete, onBack }: Props
             <span style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>
               {product?.name ?? ing.productName}
             </span>
-            <span style={{ width: 76, color: 'var(--text-2)', textAlign: 'center' }}>{ing.unit}</span>
             <AmountInput
               className="input"
               value={ing.amount}
@@ -89,6 +88,7 @@ export function RecipeView({ recipe, products, onEdit, onDelete, onBack }: Props
               style={{ width: 84, textAlign: 'center' }}
               title="Измените количество, чтобы пересчитать пропорции всего блюда"
             />
+            <span style={{ width: 60, color: 'var(--text-2)' }}>{ing.unit}</span>
           </div>
         );
       })}
