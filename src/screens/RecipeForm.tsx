@@ -8,6 +8,7 @@ import { KbjuBar } from '../components/KbjuBar';
 import { PhotoField } from '../components/PhotoField';
 import { StepsEditor } from '../components/StepsEditor';
 import { BackButton } from '../components/BackButton';
+import { CategoryPicker } from '../components/CategoryPicker';
 
 interface Props {
   initial?: Recipe;
@@ -76,18 +77,11 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
       {categories.length > 0 && (
         <div className="field">
           <label>Категория</label>
-          <select
-            className="input"
+          <CategoryPicker
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-          >
-            <option value="">Общие</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            categories={categories}
+            onChange={setCategoryId}
+          />
         </div>
       )}
 
