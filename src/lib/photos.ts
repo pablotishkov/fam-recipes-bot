@@ -5,7 +5,7 @@ import { uid } from './constants';
 export const PHOTO_BUCKET = 'recipe-photos';
 
 /** Максимальная сторона сжатого изображения (px). */
-const MAX_SIDE = 1280;
+const MAX_SIDE = 900;
 /** Качество JPEG. */
 const JPEG_QUALITY = 0.8;
 

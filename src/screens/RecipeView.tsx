@@ -65,7 +65,7 @@ export function RecipeView({ recipe, products, onEdit, onDelete, onBack }: Props
         <img
           src={recipe.photoUrl}
           alt={recipe.title}
-          style={{ width: '100%', borderRadius: 14, marginBottom: 12, objectFit: 'cover' }}
+          style={{ width: '100%', maxHeight: 300, objectFit: 'cover', borderRadius: 14, marginBottom: 12 }}
         />
       )}
 
