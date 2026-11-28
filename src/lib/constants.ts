@@ -10,6 +10,9 @@ export const PRODUCTS_KEY = 'famr:products';
 /** Ключ localStorage для рецептов. */
 export const RECIPES_KEY = 'famr:recipes';
 
+/** Ключ localStorage для id рецептов, уже подтверждённых в БД. */
+export const SYNCED_RECIPES_KEY = 'famr:syncedRecipeIds';
+
 /** Ключ localStorage для текущего пользователя. */
 export const USER_KEY = 'famr:user';
 

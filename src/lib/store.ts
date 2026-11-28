@@ -1,5 +1,5 @@
 import type { Family, Product, Recipe, SessionUser } from '../types';
-import { FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, USER_KEY, uid } from './constants';
+import { FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, SYNCED_RECIPES_KEY, USER_KEY, uid } from './constants';
 import { seedProducts } from './seed';
 import { isSupabaseConfigured, supabase } from './supabase';
 
@@ -27,6 +27,16 @@ function write<T>(key: string, value: T): void {
 
 const toIso = (ms: number) => new Date(ms).toISOString();
 const toMs = (iso: string) => new Date(iso).getTime();
+
+/* ---------- Статус синхронизации рецептов ---------- */
+
+function readSyncedIds(): Set<string> {
+  return new Set(read<string[]>(SYNCED_RECIPES_KEY, []));
+}
+
+function writeSyncedIds(ids: Iterable<string>): void {
+  write(SYNCED_RECIPES_KEY, [...ids]);
+}
 
 /* ---------- Продукты (база КБЖУ) ---------- */
 
@@ -75,11 +85,19 @@ export function saveRecipe(recipe: Recipe): Recipe {
   write(RECIPES_KEY, recipes);
   // В Supabase-режиме сохраняем рецепт со всеми ингредиентами/шагами в БД.
   if (isSupabaseConfigured && recipe.familyId) {
-    persistRecipe(recipe).catch((e) => {
-      console.error('recipe push', e);
-      // Явно сообщаем пользователю, что рецепт не ушёл в облако.
-      window.alert(`Не удалось сохранить рецепт в облако: ${e.message}`);
-    });
+    persistRecipe(recipe)
+      .then(() => {
+        // Помечаем рецепт как подтверждённый в БД — при заходе он не
+        // будет перезаписываться в базу снова.
+        const synced = readSyncedIds();
+        synced.add(recipe.id);
+        writeSyncedIds(synced);
+      })
+      .catch((e) => {
+        console.error('recipe push', e);
+        // Явно сообщаем пользователю, что рецепт не ушёл в облако.
+        window.alert(`Не удалось сохранить рецепт в облако: ${e.message}`);
+      });
   }
   return recipe;
 }
@@ -87,6 +105,10 @@ export function saveRecipe(recipe: Recipe): Recipe {
 export function deleteRecipe(id: string): void {
   const recipes = read<Recipe[]>(RECIPES_KEY, []).filter((r) => r.id !== id);
   write(RECIPES_KEY, recipes);
+  // Больше не считаем рецепт подтверждённым — на случай повторного создания.
+  const synced = readSyncedIds();
+  synced.delete(id);
+  writeSyncedIds(synced);
   if (isSupabaseConfigured) {
     supabase
       ?.from('recipes')
@@ -300,7 +322,12 @@ export async function pushLegacyToSupabase(familyId: string, userId: string): Pr
   });
   if (cacheChanged) write(RECIPES_KEY, normalized);
 
+  // Дозаписываем в БД только рецепты, которых ещё нет в ней (не подтверждены
+  // синхронизацией). Рецепты, удалённые из БД другим членом семьи, не
+  // перезаписываются обратно — их уберёт последующий pull.
+  const synced = readSyncedIds();
   for (const r of normalized) {
+    if (synced.has(r.id)) continue;
     await persistRecipe({ ...r, familyId, createdBy: r.createdBy ?? userId });
   }
 
@@ -415,5 +442,8 @@ export async function pullFromSupabase(familyId: string): Promise<{ recipes: Rec
 
   write(RECIPES_KEY, recipes);
   write(PRODUCTS_KEY, products);
+  // Все рецепты из успешного pull считаем подтверждёнными в БД: при заходе
+  // они больше не будут перезаписываться обратно.
+  writeSyncedIds(recipes.map((r) => r.id));
   return { recipes, products };
 }
