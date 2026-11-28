@@ -1,5 +1,5 @@
-import type { Category, Family, Product, Recipe, SessionUser } from '../types';
-import { CATEGORIES_KEY, FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, SYNCED_CATEGORIES_KEY, SYNCED_RECIPES_KEY, USER_KEY, uid } from './constants';
+import type { Category, Family, Product, Recipe, SessionUser, Unit } from '../types';
+import { CATEGORIES_KEY, FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, SYNCED_CATEGORIES_KEY, SYNCED_RECIPES_KEY, USER_KEY, normalizeUnit, uid } from './constants';
 import { seedProducts } from './seed';
 import { isSupabaseConfigured, supabase } from './supabase';
 import { deleteRecipePhotos } from './photos';
@@ -49,8 +49,34 @@ function writeSyncedCategoryIds(ids: Iterable<string>): void {
 
 /* ---------- Продукты (база КБЖУ) ---------- */
 
+/** Нормализует единицы в gramsPerUnit (старые названия ложек → новые). */
+function normalizeGramsPerUnit(
+  g: Product['gramsPerUnit'],
+): Product['gramsPerUnit'] | undefined {
+  if (!g) return g;
+  const out: Product['gramsPerUnit'] = {};
+  for (const [k, v] of Object.entries(g)) {
+    // Ключи gramsPerUnit — только невесовые единицы; normalizeUnit приведёт
+    // старые названия ложек к новым.
+    out[normalizeUnit(k) as Exclude<Unit, 'г' | 'кг' | 'мл' | 'л'>] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Нормализует единицы в ингредиентах рецепта (старые названия ложек → новые). */
+function normalizeRecipe(r: Recipe): Recipe {
+  if (!r.ingredients?.some((i) => i.unit !== normalizeUnit(i.unit))) return r;
+  return {
+    ...r,
+    ingredients: r.ingredients.map((i) => ({ ...i, unit: normalizeUnit(i.unit) })),
+  };
+}
+
 export function getProducts(): Product[] {
-  const custom = read<Product[]>(PRODUCTS_KEY, []);
+  const custom = (read<Product[]>(PRODUCTS_KEY, [])).map((p) => ({
+    ...p,
+    gramsPerUnit: normalizeGramsPerUnit(p.gramsPerUnit),
+  }));
   // В Supabase-режиме продукты семейные — берём только из кэша (он заполняется
   // pull-ом из БД семьи). Не подмешиваем встроенный seed, иначе удалённый из
   // БД стандартный продукт снова появился бы из кода.
@@ -88,7 +114,9 @@ export function updateProduct(product: Product, familyId?: string): void {
 /* ---------- Рецепты ---------- */
 
 export function getRecipes(): Recipe[] {
-  return read<Recipe[]>(RECIPES_KEY, []).sort((a, b) => b.updatedAt - a.updatedAt);
+  return read<Recipe[]>(RECIPES_KEY, [])
+    .map(normalizeRecipe)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export function getRecipe(id: string): Recipe | undefined {
@@ -527,7 +555,7 @@ export async function pullFromSupabase(
         productId: i.product_id ?? nameToId.get(i.product_name),
         productName: i.product_name,
         amount: Number(i.amount),
-        unit: i.unit,
+        unit: normalizeUnit(i.unit),
       })),
     steps: (stepsByRecipe.get(r.id) ?? [])
       .sort((a, b) => a.position - b.position)
@@ -548,7 +576,7 @@ export async function pullFromSupabase(
       fat: Number(p.fat),
       carbs: Number(p.carbs),
     },
-    gramsPerUnit: p.grams_per_unit ?? undefined,
+    gramsPerUnit: normalizeGramsPerUnit(p.grams_per_unit ?? undefined),
   }));
 
   const { data: catRows, error: catErr } = await supabase

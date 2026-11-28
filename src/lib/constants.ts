@@ -1,6 +1,23 @@
 import type { Kbju, Unit } from '../types';
 
-export const UNITS: Unit[] = ['г', 'кг', 'мл', 'л', 'шт', 'банка', 'ст. ложка', 'ч. ложка', 'стакан', 'микроложка'];
+export const UNITS: Unit[] = ['г', 'кг', 'мл', 'л', 'шт', 'банка', 'ст. л.', 'ч. л.', 'стакан'];
+
+/**
+ * Приводит единицу к актуальному набору. Старые названия («ст. ложка»,
+ * «ч. ложка», «микроложка») сохранились в БД/кэше до переименования — их
+ * нормализуем, чтобы они корректно отображались и не ломали селект.
+ */
+export function normalizeUnit(u: string): Unit {
+  switch (u) {
+    case 'ст. ложка':
+      return 'ст. л.';
+    case 'ч. ложка':
+    case 'микроложка':
+      return 'ч. л.';
+    default:
+      return (UNITS as string[]).includes(u) ? (u as Unit) : 'г';
+  }
+}
 
 export const EMPTY_KBJU: Kbju = { calories: 0, protein: 0, fat: 0, carbs: 0 };
 
