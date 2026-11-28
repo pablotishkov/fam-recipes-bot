@@ -75,7 +75,11 @@ export function saveRecipe(recipe: Recipe): Recipe {
   write(RECIPES_KEY, recipes);
   // В Supabase-режиме сохраняем рецепт со всеми ингредиентами/шагами в БД.
   if (isSupabaseConfigured && recipe.familyId) {
-    persistRecipe(recipe).catch((e) => console.error('recipe push', e));
+    persistRecipe(recipe).catch((e) => {
+      console.error('recipe push', e);
+      // Явно сообщаем пользователю, что рецепт не ушёл в облако.
+      window.alert(`Не удалось сохранить рецепт в облако: ${e.message}`);
+    });
   }
   return recipe;
 }

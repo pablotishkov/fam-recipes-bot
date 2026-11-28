@@ -16,10 +16,23 @@ export const USER_KEY = 'famr:user';
 /** Ключ localStorage для списка семей. */
 export const FAMILIES_KEY = 'famr:families';
 
-/** Уникальный id. */
+/** Уникальный id — всегда валидный UUID v4 (нужно для uuid-колонок в БД). */
 export function uid(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
+  const c = globalThis.crypto as (Crypto & { randomUUID?: () => string }) | undefined;
+  if (c && typeof c.randomUUID === 'function') {
+    return c.randomUUID();
   }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  // RFC 4122 v4 fallback. В старых WebView (например, внутри Telegram) без
+  // crypto.randomUUID нельзя вернуть строку вида "id-..." — она не валидный
+  // uuid, и вставка в uuid-колонку (recipes.id и т.п.) упадёт.
+  const bytes = new Uint8Array(16);
+  if (c && typeof c.getRandomValues === 'function') {
+    c.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
