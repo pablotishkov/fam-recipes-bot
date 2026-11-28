@@ -71,6 +71,10 @@ export default function App() {
       setProducts(data.products);
     } catch (e) {
       console.error('Синхронизация семьи', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      // Показываем причину — иначе пользователь не видит, что локальные
+      // данные не выгрузились в облако.
+      window.alert(`Не удалось выгрузить локальные данные в облако: ${msg}`);
     }
   }, []);
 
