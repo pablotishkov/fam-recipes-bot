@@ -71,10 +71,27 @@ export default function App() {
       setProducts(data.products);
     } catch (e) {
       console.error('Синхронизация семьи', e);
-      const msg = e instanceof Error ? e.message : String(e);
+      let detail = e instanceof Error ? e.message : String(e);
+      // Подробная диагностика RLS/авторизации: авторизована ли сессия и
+      // совпадает ли family_id фронтенда с профилем в БД.
+      try {
+        const { data: au } = await supabase!.auth.getUser();
+        const authed = Boolean(au?.user);
+        const { data: prof } = await supabase!
+          .from('profiles')
+          .select('id, family_id, name')
+          .eq('id', u.id)
+          .maybeSingle();
+        detail += `\n\nСессия авторизована: ${authed}`;
+        detail += `\nuser.id: ${u.id}`;
+        detail += `\nuser.familyId (фронт): ${u.familyId}`;
+        detail += `\nпрофиль в БД: ${JSON.stringify(prof)}`;
+      } catch (e2) {
+        detail += `\n(ошибка диагностики: ${(e2 as Error).message})`;
+      }
       // Показываем причину — иначе пользователь не видит, что локальные
       // данные не выгрузились в облако.
-      window.alert(`Не удалось выгрузить локальные данные в облако: ${msg}`);
+      window.alert(`Не удалось выгрузить локальные данные в облако:\n${detail}`);
     }
   }, []);
 
