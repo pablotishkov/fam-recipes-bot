@@ -3,6 +3,7 @@ import type { Ingredient, Product, Recipe } from '../types';
 import { rescaleIngredients, sumKbju } from '../lib/nutrition';
 import { KbjuBar } from '../components/KbjuBar';
 import { AmountInput } from '../components/AmountInput';
+import { BackButton } from '../components/BackButton';
 import { getCategories } from '../lib/store';
 
 interface Props {
@@ -41,9 +42,7 @@ export function RecipeView({ recipe, products, onEdit, onDelete, onBack }: Props
   return (
     <div>
       <div className="topbar">
-        <button className="btn btn-icon" onClick={onBack} aria-label="Назад">
-          ←
-        </button>
+        <BackButton onClick={onBack} />
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-sm" onClick={onEdit}>
             ✏️

@@ -19,6 +19,7 @@ interface TelegramWebApp {
   ready: () => void;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
+  platform?: string;
 }
 
 interface TelegramWindow {
@@ -36,6 +37,13 @@ declare global {
 /** Работаем ли внутри Telegram (или при открытии через бота). */
 export function isTelegram(): boolean {
   return typeof window !== 'undefined' && Boolean(window.Telegram?.WebApp);
+}
+
+/** Android-клиент Telegram (или просто Android-браузер). */
+export function isAndroid(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (webApp()?.platform === 'android') return true;
+  return /Android/i.test(navigator.userAgent);
 }
 
 export function webApp(): TelegramWebApp | undefined {

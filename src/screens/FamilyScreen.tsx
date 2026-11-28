@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Category, Family } from '../types';
 import { addCategory, deleteCategory, getCategories, updateCategory } from '../lib/store';
+import { BackButton } from '../components/BackButton';
 
 interface Props {
   family: Family;
@@ -63,9 +64,7 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
   return (
     <div>
       <div className="topbar">
-        <button className="btn btn-icon" onClick={onBack} aria-label="Назад">
-          ←
-        </button>
+        <BackButton onClick={onBack} />
         <h1 style={{ fontSize: 17 }}>Настройки семьи</h1>
         <span style={{ width: 48 }} />
       </div>

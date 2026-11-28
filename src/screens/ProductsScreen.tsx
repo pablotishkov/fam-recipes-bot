@@ -3,6 +3,7 @@ import type { Product } from '../types';
 import { addProduct, getProducts, updateProduct } from '../lib/store';
 import { formatKbju } from '../lib/nutrition';
 import { fuzzyFilter } from '../lib/search';
+import { BackButton } from '../components/BackButton';
 
 interface Props {
   onBack: () => void;
@@ -105,9 +106,7 @@ export function ProductsScreen({ onBack }: Props) {
   return (
     <div>
       <div className="topbar">
-        <button className="btn btn-icon" onClick={onBack} aria-label="Назад">
-          ←
-        </button>
+        <BackButton onClick={onBack} />
         <h1 style={{ fontSize: 17 }}>База продуктов</h1>
         <button className="btn btn-icon btn-primary" onClick={openAdd}>
           +

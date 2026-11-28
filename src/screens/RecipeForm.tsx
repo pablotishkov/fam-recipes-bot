@@ -7,6 +7,7 @@ import { IngredientEditor } from '../components/IngredientEditor';
 import { KbjuBar } from '../components/KbjuBar';
 import { PhotoField } from '../components/PhotoField';
 import { StepsEditor } from '../components/StepsEditor';
+import { BackButton } from '../components/BackButton';
 
 interface Props {
   initial?: Recipe;
@@ -55,9 +56,7 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <div className="topbar">
-        <button className="btn btn-icon" onClick={onCancel} aria-label="Назад">
-          ←
-        </button>
+        <BackButton onClick={onCancel} />
         <h1 style={{ fontSize: 17 }}>{initial ? 'Редактировать' : 'Новый рецепт'}</h1>
         <button className="btn btn-sm btn-primary" onClick={handleSave}>
           Сохранить
