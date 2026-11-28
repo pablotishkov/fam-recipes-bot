@@ -363,15 +363,16 @@ async function deleteCategoryFromSupabase(id: string, familyId?: string): Promis
   if (error) throw new Error(error.message);
 }
 
-/** Апсерт продукта в семейную базу (уникален по family_id + name). */
+/** Апсерт продукта в семейную базу: обновление по id, вставка нового. */
 async function persistProduct(product: Product, familyId?: string): Promise<void> {
   if (!supabase || !familyId) return;
   const res = await supabase.from('products').upsert(
     {
-      // id намеренно не передаём: у стандартных продуктов id детерминированный
-      // (одинаковый у всех), а первичный ключ глобальный. Уникальность строки
-      // обеспечивает (family_id, name), id пусть генерирует БД. Связь
-      // ингредиентов идёт по имени, поэтому локальный id не нужен.
+      // Обновляем по id — иначе при смене имени upsert по (family_id, name)
+      // не найдёт старую строку и создаст новую вместо правки существующей.
+      // id у продуктов из кэша (после pull) — настоящий из БД, у новых —
+      // уникальный uid(), так что коллизий первичного ключа нет.
+      id: product.id,
       family_id: familyId,
       name: product.name,
       calories: product.kbju.calories,
@@ -380,7 +381,7 @@ async function persistProduct(product: Product, familyId?: string): Promise<void
       carbs: product.kbju.carbs,
       grams_per_unit: product.gramsPerUnit ?? null,
     },
-    { onConflict: 'family_id,name' },
+    { onConflict: 'id' },
   );
   assertNoError(res);
 }
