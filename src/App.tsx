@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Recipe, SessionUser } from './types';
+import type { Product, Recipe, SessionUser } from './types';
 import {
   currentColorScheme,
   displayName,
@@ -8,7 +8,7 @@ import {
 } from './lib/telegram';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { authenticateWithTelegram, signOutFromSupabase, type FamilyAction } from './lib/auth';
-import { deleteRecipe, getFamily, getProducts, getRecipes, getUser, leaveFamily, saveRecipe, updateFamilyName } from './lib/store';
+import { deleteRecipe, getFamily, getProducts, getRecipes, getUser, leaveFamily, pullFromSupabase, pushLegacyToSupabase, saveRecipe, updateFamilyName } from './lib/store';
 import { Onboarding } from './screens/Onboarding';
 import { FamilySetup } from './screens/FamilySetup';
 import { ListScreen } from './screens/ListScreen';
@@ -55,6 +55,24 @@ export default function App() {
   );
   const [authState, setAuthState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [authError, setAuthError] = useState('');
+  const [recipes, setRecipes] = useState<Recipe[]>(() => getRecipes());
+  const [products, setProducts] = useState<Product[]>(() => getProducts());
+
+  /**
+   * После входа (Supabase-режим): выгружаем существующие локальные данные в БД
+   * (идемпотентно) и подтягиваем свежие данные семьи в кэш + состояние.
+   */
+  const loadFamilyData = useCallback(async (u: SessionUser) => {
+    if (!isSupabaseConfigured || !u.familyId) return;
+    try {
+      await pushLegacyToSupabase(u.familyId, u.id);
+      const data = await pullFromSupabase(u.familyId);
+      setRecipes(data.recipes);
+      setProducts(data.products);
+    } catch (e) {
+      console.error('Синхронизация семьи', e);
+    }
+  }, []);
 
   useEffect(() => {
     initTelegram();
@@ -68,6 +86,7 @@ export default function App() {
           if (u) {
             setUser(u);
             setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
+            loadFamilyData(u);
           }
           setAuthState('idle');
         })
@@ -76,7 +95,66 @@ export default function App() {
           setAuthState('error');
         });
     }
-  }, []);
+  }, [loadFamilyData]);
+
+  // Обновление при возврате в приложение: подтягиваем изменения других членов семьи.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && user?.familyId) {
+        pullFromSupabase(user.familyId)
+          .then((d) => {
+            setRecipes(d.recipes);
+            setProducts(d.products);
+          })
+          .catch((e) => console.error('Обновление данных семьи', e));
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [user?.familyId]);
+
+  // Realtime: живые обновления рецептов и продуктов, пока приложение открыто.
+  // RLS-фильтр отдаёт только свою семью; дебаунс схлопывает пачки событий
+  // (например, каскадную перезапись ингредиентов/шагов) в один pull.
+  useEffect(() => {
+    const client = supabase;
+    if (!isSupabaseConfigured || !client || !user?.familyId) return;
+    const familyId = user.familyId;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedulePull = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        pullFromSupabase(familyId)
+          .then((d) => {
+            setRecipes(d.recipes);
+            setProducts(d.products);
+          })
+          .catch((e) => console.error('Realtime-обновление', e));
+      }, 400);
+    };
+
+    const recipesChannel = client
+      .channel(`recipes-${familyId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'recipes', filter: `family_id=eq.${familyId}` },
+        schedulePull,
+      )
+      .subscribe();
+
+    const productsChannel = client
+      .channel(`products-${familyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, schedulePull)
+      .subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      client.removeChannel(recipesChannel);
+      client.removeChannel(productsChannel);
+    };
+  }, [user?.familyId]);
 
   const retryAuth = useCallback(() => {
     setAuthState('loading');
@@ -86,6 +164,7 @@ export default function App() {
         if (u) {
           setUser(u);
           setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
+          loadFamilyData(u);
         }
         setAuthState('idle');
       })
@@ -93,19 +172,21 @@ export default function App() {
         setAuthError(e.message);
         setAuthState('error');
       });
-  }, []);
+  }, [loadFamilyData]);
 
   // Создание семьи или вступление по коду (Supabase-режим).
-  const handleFamilySetup = useCallback(async (action: FamilyAction) => {
-    const u = await authenticateWithTelegram(action);
-    if (u) {
-      setUser(u);
-      setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
-    }
-  }, []);
+  const handleFamilySetup = useCallback(
+    async (action: FamilyAction) => {
+      const u = await authenticateWithTelegram(action);
+      if (u) {
+        setUser(u);
+        setView(u.familyId ? { name: 'list' } : { name: 'family-setup' });
+        loadFamilyData(u);
+      }
+    },
+    [loadFamilyData],
+  );
 
-  const recipes = getRecipes();
-  const products = getProducts();
   // В Supabase-режиме семья живёт в БД и приходит в SessionUser (имя + код);
   // в демо-режиме — из localStorage.
   const family = user?.familyId
@@ -143,6 +224,7 @@ export default function App() {
     (id: string) => {
       if (!window.confirm('Удалить рецепт?')) return;
       deleteRecipe(id);
+      setRecipes((prev) => prev.filter((r) => r.id !== id));
       openList();
     },
     [openList],

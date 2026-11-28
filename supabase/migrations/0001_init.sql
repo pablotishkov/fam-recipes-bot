@@ -96,9 +96,10 @@ as $$
   );
 $$;
 
--- Продукты: база общая, все читают и добавляют.
-create policy "products_read"  on public.products for select using (true);
+-- Продукты: база общая, все читают, добавляют и правят (upsert по имени).
+create policy "products_read"   on public.products for select using (true);
 create policy "products_insert" on public.products for insert with check (true);
+create policy "products_update" on public.products for update using (true);
 
 -- Семьи: участники читают, код-приглашение виден только своей семье.
 create policy "families_read" on public.families for select
@@ -174,3 +175,14 @@ drop trigger if exists recipes_touch on public.recipes;
 create trigger recipes_touch
   before update on public.recipes
   for each row execute function public.touch_updated_at();
+
+-- ============================================================
+-- Realtime
+-- Фронтенд подписывается на изменения рецептов и продуктов, чтобы
+-- правки других членов семьи подтягивались вживую. Realtime уважает RLS,
+-- поэтому канал по рецептам отдаёт только данные своей семьи.
+-- ============================================================
+alter publication supabase_realtime add table public.recipes;
+alter publication supabase_realtime add table public.ingredients;
+alter publication supabase_realtime add table public.steps;
+alter publication supabase_realtime add table public.products;

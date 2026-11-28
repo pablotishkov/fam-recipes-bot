@@ -1,6 +1,16 @@
 import type { Family, Product, Recipe, SessionUser } from '../types';
 import { FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, USER_KEY, uid } from './constants';
 import { seedProducts } from './seed';
+import { isSupabaseConfigured, supabase } from './supabase';
+
+/* ------------------------------------------------------------------ */
+/* Локальный кэш (localStorage).                                       */
+/*                                                                     */
+/* localStorage остаётся быстрым кэшем для мгновенного рендера и        */
+/* офлайн-резервом. В Supabase-режиме каждое изменение дополнительно    */
+/* пишется в БД (write-through), а данные семьи подтягиваются из БД     */
+/* при загрузке и при возврате в приложение (см. pullFromSupabase).     */
+/* ------------------------------------------------------------------ */
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -14,6 +24,9 @@ function read<T>(key: string, fallback: T): T {
 function write<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value));
 }
+
+const toIso = (ms: number) => new Date(ms).toISOString();
+const toMs = (iso: string) => new Date(iso).getTime();
 
 /* ---------- Продукты (база КБЖУ) ---------- */
 
@@ -29,6 +42,8 @@ export function addProduct(product: Omit<Product, 'id'>): Product {
   const custom = read<Product[]>(PRODUCTS_KEY, []);
   const created: Product = { ...product, id: uid() };
   write(PRODUCTS_KEY, [...custom, created]);
+  // В Supabase-режиме сохраняем в общую базу (по уникальному имени).
+  if (isSupabaseConfigured) persistProduct(created).catch((e) => console.error('product push', e));
   return created;
 }
 
@@ -39,6 +54,7 @@ export function updateProduct(product: Product): void {
   if (idx >= 0) custom[idx] = product;
   else custom.push(product);
   write(PRODUCTS_KEY, custom);
+  if (isSupabaseConfigured) persistProduct(product).catch((e) => console.error('product push', e));
 }
 
 /* ---------- Рецепты ---------- */
@@ -57,12 +73,23 @@ export function saveRecipe(recipe: Recipe): Recipe {
   if (idx >= 0) recipes[idx] = recipe;
   else recipes.push(recipe);
   write(RECIPES_KEY, recipes);
+  // В Supabase-режиме сохраняем рецепт со всеми ингредиентами/шагами в БД.
+  if (isSupabaseConfigured && recipe.familyId) {
+    persistRecipe(recipe).catch((e) => console.error('recipe push', e));
+  }
   return recipe;
 }
 
 export function deleteRecipe(id: string): void {
   const recipes = read<Recipe[]>(RECIPES_KEY, []).filter((r) => r.id !== id);
   write(RECIPES_KEY, recipes);
+  if (isSupabaseConfigured) {
+    supabase
+      ?.from('recipes')
+      .delete()
+      .eq('id', id)
+      .then(() => {}, (e) => console.error('recipe delete', e));
+  }
 }
 
 /* ---------- Пользователь и семья ---------- */
@@ -148,4 +175,189 @@ export function updateFamilyName(familyId: string, name: string): void {
 /** Выход из семьи: сбрасывает текущего пользователя (возврат к онбордингу). */
 export function leaveFamily(): void {
   setUser(null);
+}
+
+/* ================================================================== */
+/* Supabase: синхронизация семьи                                       */
+/* ================================================================== */
+
+/** Апсерт рецепта со всеми ингредиентами и шагами (идемпотентно по id). */
+async function persistRecipe(recipe: Recipe): Promise<void> {
+  if (!supabase) return;
+  const familyId = recipe.familyId;
+  if (!familyId) return;
+
+  // 1. Рецепт — upsert по id (повторная выгрузка не создаёт дубли).
+  await supabase.from('recipes').upsert(
+    {
+      id: recipe.id,
+      title: recipe.title,
+      description: recipe.description,
+      photo_url: recipe.photoUrl ?? null,
+      family_id: familyId,
+      created_by: recipe.createdBy ?? null,
+      created_at: toIso(recipe.createdAt),
+      updated_at: toIso(recipe.updatedAt),
+    },
+    { onConflict: 'id' },
+  );
+
+  // 2. Ингредиенты и шаги — замена целиком (перезапись дочерних строк).
+  await supabase.from('ingredients').delete().eq('recipe_id', recipe.id);
+  await supabase.from('steps').delete().eq('recipe_id', recipe.id);
+
+  const ings = recipe.ingredients ?? [];
+  if (ings.length) {
+    // Сопоставляем product_id с существующей записью в общей базе по имени.
+    const rows = await Promise.all(
+      ings.map(async (ing, position) => {
+        const productId = await findDbProductIdByName(ing.productName);
+        return {
+          recipe_id: recipe.id,
+          product_id: productId,
+          product_name: ing.productName,
+          amount: ing.amount,
+          unit: ing.unit,
+          position,
+        };
+      }),
+    );
+    await supabase.from('ingredients').insert(rows);
+  }
+
+  const steps = recipe.steps ?? [];
+  if (steps.length) {
+    await supabase.from('steps').insert(
+      steps.map((s, position) => ({
+        recipe_id: recipe.id,
+        position,
+        text: s.text,
+        photo_url: s.photoUrl ?? null,
+      })),
+    );
+  }
+}
+
+/** Апсерт продукта в общую базу по уникальному имени (без дублей). */
+async function persistProduct(product: Product): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('products').upsert(
+    {
+      name: product.name,
+      calories: product.kbju.calories,
+      protein: product.kbju.protein,
+      fat: product.kbju.fat,
+      carbs: product.kbju.carbs,
+      grams_per_unit: product.gramsPerUnit ?? null,
+    },
+    { onConflict: 'name' },
+  );
+}
+
+/** Поиск id продукта в общей базе по имени (для связи ингредиента). */
+async function findDbProductIdByName(name: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from('products')
+    .select('id')
+    .eq('name', name)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+/**
+ * Выгрузка локальных (уже существующих) данных в БД при первом входе.
+ * Рецепты апсертятся по id (идемпотентно), продукты — по имени (дедупликация).
+ */
+export async function pushLegacyToSupabase(familyId: string, userId: string): Promise<void> {
+  if (!supabase) return;
+
+  const recipes = read<Recipe[]>(RECIPES_KEY, []);
+  for (const r of recipes) {
+    await persistRecipe({ ...r, familyId: r.familyId ?? familyId, createdBy: r.createdBy ?? userId });
+  }
+
+  const customs = read<Product[]>(PRODUCTS_KEY, []);
+  const seen = new Set<string>();
+  for (const p of customs) {
+    const key = p.name.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    await persistProduct(p);
+  }
+}
+
+/**
+ * Подтягивает рецепты и продукты семьи из БД в локальный кэш.
+ * Возвращает данные, чтобы App мог обновить состояние и перерисоваться.
+ */
+export async function pullFromSupabase(familyId: string): Promise<{ recipes: Recipe[]; products: Product[] }> {
+  if (!supabase) {
+    return { recipes: getRecipes(), products: getProducts() };
+  }
+
+  const { data: rows } = await supabase.from('recipes').select('*').eq('family_id', familyId);
+  const ids = (rows ?? []).map((r) => r.id);
+
+  const [{ data: ingRows }, { data: stepRows }] = await Promise.all([
+    ids.length ? supabase.from('ingredients').select('*').in('recipe_id', ids) : Promise.resolve({ data: [] }),
+    ids.length ? supabase.from('steps').select('*').in('recipe_id', ids) : Promise.resolve({ data: [] }),
+  ]);
+
+  const ingByRecipe = new Map<string, typeof ingRows>();
+  for (const i of ingRows ?? []) {
+    const list = ingByRecipe.get(i.recipe_id) ?? [];
+    list.push(i);
+    ingByRecipe.set(i.recipe_id, list);
+  }
+  const stepsByRecipe = new Map<string, typeof stepRows>();
+  for (const s of stepRows ?? []) {
+    const list = stepsByRecipe.get(s.recipe_id) ?? [];
+    list.push(s);
+    stepsByRecipe.set(s.recipe_id, list);
+  }
+
+  // Карта имя → id из текущего кэша (включая встроенные продукты) для
+  // восстановления связи seed-продуктов, у которых в БД нет своей записи.
+  const nameToId = new Map(getProducts().map((p) => [p.name, p.id]));
+
+  const recipes: Recipe[] = (rows ?? []).map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    photoUrl: r.photo_url ?? undefined,
+    familyId: r.family_id ?? undefined,
+    createdBy: r.created_by ?? undefined,
+    createdAt: toMs(r.created_at),
+    updatedAt: toMs(r.updated_at),
+    ingredients: (ingByRecipe.get(r.id) ?? [])
+      .sort((a, b) => a.position - b.position)
+      .map((i) => ({
+        id: i.id,
+        productId: i.product_id ?? nameToId.get(i.product_name),
+        productName: i.product_name,
+        amount: Number(i.amount),
+        unit: i.unit,
+      })),
+    steps: (stepsByRecipe.get(r.id) ?? [])
+      .sort((a, b) => a.position - b.position)
+      .map((s) => ({ id: s.id, text: s.text, photoUrl: s.photo_url ?? undefined })),
+  }));
+
+  const { data: prodRows } = await supabase.from('products').select('*');
+  const products: Product[] = (prodRows ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    kbju: {
+      calories: Number(p.calories),
+      protein: Number(p.protein),
+      fat: Number(p.fat),
+      carbs: Number(p.carbs),
+    },
+    gramsPerUnit: p.grams_per_unit ?? undefined,
+  }));
+
+  write(RECIPES_KEY, recipes);
+  write(PRODUCTS_KEY, products);
+  return { recipes, products };
 }
