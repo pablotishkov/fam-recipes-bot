@@ -29,9 +29,9 @@ type View =
 /** Промежуточные экраны аутентификации. */
 function AuthLoading() {
   return (
-    <div className="center">
-      <h1>Семейные рецепты 🍳</h1>
-      <p className="muted">Входим через Telegram…</p>
+    <div className="auth-loading">
+      <div className="auth-loading-title">Авторизация…</div>
+      <div className="auth-loading-spinner" role="status" aria-label="Загрузка" />
     </div>
   );
 }
