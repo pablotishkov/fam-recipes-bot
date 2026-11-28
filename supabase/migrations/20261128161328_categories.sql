@@ -87,6 +87,11 @@ revoke all on function public.delete_category from public;
 grant execute on function public.delete_category to authenticated;
 
 -- ---------- save_recipe: добавлен параметр категории ----------
+-- Убираем прежнюю перегрузку save_recipe (без категории). create or replace
+-- не может менять список аргументов — без drop создалась бы вторая функция
+-- с тем же именем и ошибка 42725 "function is not unique".
+drop function if exists public.save_recipe;
+
 create or replace function public.save_recipe(
   p_id uuid,
   p_family_id uuid,
