@@ -17,6 +17,45 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
   const [cats, setCats] = useState<Category[]>(() => getCategories());
   const [newCat, setNewCat] = useState('');
   const [renames, setRenames] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState<'bot' | 'code' | null>(null);
+
+  // Ссылка на бота (без startapp) — по клику копируется в буфер.
+  const botLink = 'https://t.me/FamReceiptsBot';
+
+  function copyText(text: string, which: 'bot' | 'code') {
+    const done = () => {
+      setCopied(which);
+      setTimeout(() => setCopied((c) => (c === which ? null : c)), 1600);
+    };
+
+    // Основной путь — Clipboard API; в Telegram WebView (и в не-https)
+    // он может быть недоступен, поэтому есть fallback через execCommand.
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(done)
+        .catch(() => fallbackCopy(text, done));
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text: string, done: () => void) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch {
+      // Буфер недоступен — ничего не делаем, ссылка видна на экране.
+    }
+  }
 
   function refreshCats() {
     setCats(getCategories());
@@ -43,9 +82,6 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
     refreshCats();
   }
 
-  // Ссылка-приглашение, по которой родные вступят в семью по коду (startapp).
-  const inviteLink = `https://t.me/FamReceiptsBot/app?startapp=${family.inviteCode}`;
-
   function handleSave() {
     if (!name.trim()) return;
     onRename(name.trim());
@@ -54,11 +90,7 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
   }
 
   async function copyCode() {
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-    } catch {
-      // Ссылка и так видна на экране.
-    }
+    copyText(family.inviteCode, 'code');
   }
 
   return (
@@ -89,38 +121,50 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
         </button>
       </div>
 
-      <div className="section-title">Код-приглашение</div>
+      <div className="section-title">Приглашение</div>
+
+      {/* Блок: ссылка на бота (без startapp) — по клику копируется */}
+      <div className="card" style={{ marginBottom: 10, textAlign: 'center' }}>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+          Отправьте членам семьи ссылку на бота
+        </div>
+        <button className="btn btn-block" onClick={() => copyText(botLink, 'bot')}>
+          {copied === 'bot' ? '✓ Скопировано' : botLink}
+        </button>
+      </div>
+
+      {/* Блок: код-приглашение — по клику на код копируется сам код */}
       <div className="card" style={{ textAlign: 'center' }}>
         <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>
-          По этой ссылке родные вступят в семью
+          Поделитесь кодом семьи с родными
         </div>
         <div
+          role="button"
+          tabIndex={0}
+          onClick={copyCode}
+          onKeyDown={(e) => e.key === 'Enter' && copyCode()}
           style={{
-            fontSize: 30,
-            fontWeight: 800,
-            letterSpacing: 5,
+            fontSize: 15,
+            fontWeight: copied === 'code' ? 600 : 800,
+            letterSpacing: copied === 'code' ? 0 : 5,
             background: 'var(--surface-2)',
             borderRadius: 10,
             padding: '10px 0',
-            marginBottom: 10,
+            cursor: 'pointer',
+            userSelect: 'none',
           }}
+          title="Скопировать код"
         >
-          {family.inviteCode}
+          {copied === 'code' ? '✓ Код скопирован' : family.inviteCode}
         </div>
-        <div
-          className="muted"
-          style={{
-            fontSize: 12,
-            wordBreak: 'break-all',
-            marginBottom: 10,
-            color: 'var(--link, #2a6fd8)',
-          }}
-        >
-          {inviteLink}
-        </div>
-        <button className="btn btn-block" onClick={copyCode}>
-          Скопировать ссылку-приглашение
-        </button>
+      </div>
+
+      <div className="section-title">Участники</div>
+      <div className="card">
+        <p className="muted" style={{ margin: 0 }}>
+          Все члены семьи видят и редактируют общие рецепты. Приглашайте новых по
+          коду выше.
+        </p>
       </div>
 
       <div className="section-title">Категории рецептов</div>
@@ -165,14 +209,6 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
         <button className="btn btn-sm btn-primary" onClick={addCat} aria-label="Добавить категорию">
           +
         </button>
-      </div>
-
-      <div className="section-title">Участники</div>
-      <div className="card">
-        <p className="muted" style={{ margin: 0 }}>
-          Все члены семьи видят и редактируют общие рецепты. Приглашайте новых по
-          коду выше.
-        </p>
       </div>
 
       <div className="section-title">Выход</div>
