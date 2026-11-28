@@ -284,6 +284,13 @@ async function findDbProductIdByName(name: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
+/** Регулярка для проверки валидного UUID (в любом регистре). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(v: string): boolean {
+  return typeof v === 'string' && UUID_RE.test(v);
+}
+
 /**
  * Выгрузка локальных (уже существующих) данных в БД при первом входе.
  * Рецепты апсертятся по id (идемпотентно), продукты — по имени (дедупликация).
@@ -291,12 +298,24 @@ async function findDbProductIdByName(name: string): Promise<string | null> {
  * Важно: `familyId` принудительно берётся из текущей семьи пользователя, а не
  * из сохранённого в старом локальном рецепте (там может лежать uuid другой —
  * демо/локальной — семьи, и вставка будет отклонена RLS).
+ *
+ * Рецепты с невалидным id (старый `uid()` мог вернуть "id-...") получают новый
+ * валидный UUID и обновляются в локальном кэше — иначе Postgres не примет
+ * их в uuid-колонку recipes.id, и они не выгрузятся в БД.
  */
 export async function pushLegacyToSupabase(familyId: string, userId: string): Promise<void> {
   if (!supabase) return;
 
   const recipes = read<Recipe[]>(RECIPES_KEY, []);
-  for (const r of recipes) {
+  let cacheChanged = false;
+  const normalized = recipes.map((r) => {
+    if (isUuid(r.id)) return r;
+    cacheChanged = true;
+    return { ...r, id: uid() };
+  });
+  if (cacheChanged) write(RECIPES_KEY, normalized);
+
+  for (const r of normalized) {
     await persistRecipe({ ...r, familyId, createdBy: r.createdBy ?? userId });
   }
 
