@@ -85,7 +85,14 @@ export function IngredientEditor({ ingredients, products, onChange, onAddProduct
       )}
 
       {ingredients.map((ing) => {
-        const product = products.find((p) => p.id === ing.productId);
+        // Ищем продукт по id, а если id не совпал (например, после синхронизации
+        // id мог разойтись) — по имени. Это не даёт снова показать форму
+        // добавления для продукта, который уже есть в базе.
+        const product =
+          products.find((p) => p.id === ing.productId) ||
+          products.find(
+            (p) => p.name.toLowerCase() === (ing.productName ?? '').trim().toLowerCase(),
+          );
         return (
           <div key={ing.id} className="card" style={{ marginBottom: 8, padding: 12 }}>
             <div className="autocomplete">

@@ -359,6 +359,7 @@ async function persistProduct(product: Product): Promise<void> {
   if (!supabase) return;
   const res = await supabase.from('products').upsert(
     {
+      id: product.id,
       name: product.name,
       calories: product.kbju.calories,
       protein: product.kbju.protein,
