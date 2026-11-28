@@ -95,7 +95,7 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
         ingredients={ingredients}
         products={products}
         onChange={setIngredients}
-        onAddProduct={(p) => addProduct(p)}
+        onAddProduct={(p) => addProduct(p, user.familyId)}
       />
 
       {ingredients.some((i) => i.productName) && <KbjuBar total={total} />}

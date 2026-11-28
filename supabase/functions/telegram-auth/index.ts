@@ -206,7 +206,7 @@ async function findFamilyIdByCode(
   return fam?.id ?? null;
 }
 
-/** Создание новой семьи с именем и кодом-приглашением. */
+/** Создание новой семьи с именем и кодом-приглашением + сид стандартных продуктов. */
 async function createFamily(
   supabase: ReturnType<typeof createClient>,
   familyName: string,
@@ -217,7 +217,12 @@ async function createFamily(
     .insert({ invite_code: code, name: familyName.trim() || 'Моя семья' })
     .select('id')
     .single();
-  return created?.id ?? null;
+  const familyId = created?.id ?? null;
+  if (familyId) {
+    // Сразу наполняем семью стандартным набором продуктов (одноразово).
+    await supabase.rpc('seed_default_products', { p_family_id: familyId });
+  }
+  return familyId;
 }
 
 function generateCode(): string {

@@ -1,10 +1,33 @@
 import type { Product } from '../types';
 
+/** Детерминированный валидный UUID v4 из строки (стабилен между устройствами). */
+function stableUuid(seed: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const bytes = new Uint8Array(16);
+  let state = h;
+  for (let i = 0; i < 16; i++) {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    bytes[i] = state & 0xff;
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /**
  * База продуктов с КБЖУ на 100 г. Расширяется вручную из интерфейса.
  * Значения типичные из открытых источников (ФНЦ питания и др.), округлены.
+ *
+ * id у стандартных продуктов — стабильный UUID, полученный из slug. Он нужен,
+ * чтобы стандартные продукты могли записываться в общую БД (колонка id — uuid)
+ * и правки синхронизировались между членами семьи.
  */
-export const seedProducts: Product[] = [
+const rawSeed: Array<Omit<Product, 'id'> & { id: string }> = [
   { id: 'p-muka', name: 'Мука пшеничная', kbju: { calories: 334, protein: 10.3, fat: 1.1, carbs: 69 } },
   { id: 'p-sahar', name: 'Сахар', kbju: { calories: 398, protein: 0, fat: 0, carbs: 99.8 } },
   { id: 'p-maslo', name: 'Масло сливочное', kbju: { calories: 748, protein: 0.8, fat: 82.5, carbs: 0.8 }, gramsPerUnit: { 'ст. ложка': 20, 'ч. ложка': 7, стакан: 200 } },
@@ -45,3 +68,9 @@ export const seedProducts: Product[] = [
   { id: 'p-perec', name: 'Перец чёрный', kbju: { calories: 251, protein: 10, fat: 3.3, carbs: 64 } },
   { id: 'p-drozhzhi', name: 'Дрожжи сухие', kbju: { calories: 325, protein: 49, fat: 6, carbs: 41 } },
 ];
+
+/** Стандартные продукты со стабильными UUID id (детерминированно из slug). */
+export const seedProducts: Product[] = rawSeed.map((p) => ({
+  ...p,
+  id: stableUuid(p.id),
+}));

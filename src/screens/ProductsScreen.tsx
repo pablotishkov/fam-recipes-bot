@@ -7,6 +7,7 @@ import { BackButton } from '../components/BackButton';
 
 interface Props {
   onBack: () => void;
+  familyId?: string;
 }
 
 interface Draft {
@@ -29,7 +30,7 @@ const emptyDraft: Draft = {
   gramsBank: '',
 };
 
-export function ProductsScreen({ onBack }: Props) {
+export function ProductsScreen({ onBack, familyId }: Props) {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,18 +88,24 @@ export function ProductsScreen({ onBack }: Props) {
     if (bank > 0) gramsPerUnit.банка = bank;
 
     if (editingId) {
-      updateProduct({
-        id: editingId,
-        name: draft.name.trim(),
-        kbju,
-        gramsPerUnit: Object.keys(gramsPerUnit).length ? gramsPerUnit : undefined,
-      });
+      updateProduct(
+        {
+          id: editingId,
+          name: draft.name.trim(),
+          kbju,
+          gramsPerUnit: Object.keys(gramsPerUnit).length ? gramsPerUnit : undefined,
+        },
+        familyId,
+      );
     } else {
-      addProduct({
-        name: draft.name.trim(),
-        kbju,
-        gramsPerUnit: Object.keys(gramsPerUnit).length ? gramsPerUnit : undefined,
-      });
+      addProduct(
+        {
+          name: draft.name.trim(),
+          kbju,
+          gramsPerUnit: Object.keys(gramsPerUnit).length ? gramsPerUnit : undefined,
+        },
+        familyId,
+      );
     }
     closeForm();
   }

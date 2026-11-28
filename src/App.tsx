@@ -334,7 +334,7 @@ export default function App() {
   }
 
   if (view.name === 'products') {
-    return <ProductsScreen onBack={openList} />;
+    return <ProductsScreen familyId={user.familyId} onBack={openList} />;
   }
 
   if (view.name === 'family') {

@@ -50,29 +50,38 @@ function writeSyncedCategoryIds(ids: Iterable<string>): void {
 
 export function getProducts(): Product[] {
   const custom = read<Product[]>(PRODUCTS_KEY, []);
-  // Кастомные продукты переопределяют встроенные с тем же id.
+  // В Supabase-режиме продукты семейные — берём только из кэша (он заполняется
+  // pull-ом из БД семьи). Не подмешиваем встроенный seed, иначе удалённый из
+  // БД стандартный продукт снова появился бы из кода.
+  if (isSupabaseConfigured) return custom;
+  // Демо-режим (без БД): встроенные продукты + кастомные, кастомные
+  // переопределяют встроенные с тем же id.
   const merged = new Map(seedProducts.map((p) => [p.id, p]));
   for (const c of custom) merged.set(c.id, c);
   return [...merged.values()];
 }
 
-export function addProduct(product: Omit<Product, 'id'>): Product {
+export function addProduct(product: Omit<Product, 'id'>, familyId?: string): Product {
   const custom = read<Product[]>(PRODUCTS_KEY, []);
   const created: Product = { ...product, id: uid() };
   write(PRODUCTS_KEY, [...custom, created]);
-  // В Supabase-режиме сохраняем в общую базу (по уникальному имени).
-  if (isSupabaseConfigured) persistProduct(created).catch((e) => console.error('product push', e));
+  // В Supabase-режиме сохраняем в семейную базу (по уникальному имени в семье).
+  if (isSupabaseConfigured) {
+    persistProduct(created, familyId).catch((e) => console.error('product push', e));
+  }
   return created;
 }
 
 /** Обновление продукта: правка существующего или переопределение встроенного. */
-export function updateProduct(product: Product): void {
+export function updateProduct(product: Product, familyId?: string): void {
   const custom = read<Product[]>(PRODUCTS_KEY, []);
   const idx = custom.findIndex((p) => p.id === product.id);
   if (idx >= 0) custom[idx] = product;
   else custom.push(product);
   write(PRODUCTS_KEY, custom);
-  if (isSupabaseConfigured) persistProduct(product).catch((e) => console.error('product push', e));
+  if (isSupabaseConfigured) {
+    persistProduct(product, familyId).catch((e) => console.error('product push', e));
+  }
 }
 
 /* ---------- Рецепты ---------- */
@@ -301,7 +310,7 @@ async function persistRecipe(recipe: Recipe): Promise<void> {
   const ings = recipe.ingredients ?? [];
   const resolved = await Promise.all(
     ings.map(async (ing, position) => {
-      const productId = await findDbProductIdByName(ing.productName);
+      const productId = await findDbProductIdByName(ing.productName, familyId);
       return {
         product_id: productId,
         product_name: ing.productName,
@@ -354,12 +363,13 @@ async function deleteCategoryFromSupabase(id: string, familyId?: string): Promis
   if (error) throw new Error(error.message);
 }
 
-/** Апсерт продукта в общую базу по уникальному имени (без дублей). */
-async function persistProduct(product: Product): Promise<void> {
-  if (!supabase) return;
+/** Апсерт продукта в семейную базу (уникален по family_id + name). */
+async function persistProduct(product: Product, familyId?: string): Promise<void> {
+  if (!supabase || !familyId) return;
   const res = await supabase.from('products').upsert(
     {
       id: product.id,
+      family_id: familyId,
       name: product.name,
       calories: product.kbju.calories,
       protein: product.kbju.protein,
@@ -367,18 +377,19 @@ async function persistProduct(product: Product): Promise<void> {
       carbs: product.kbju.carbs,
       grams_per_unit: product.gramsPerUnit ?? null,
     },
-    { onConflict: 'name' },
+    { onConflict: 'family_id,name' },
   );
   assertNoError(res);
 }
 
-/** Поиск id продукта в общей базе по имени (для связи ингредиента). */
-async function findDbProductIdByName(name: string): Promise<string | null> {
+/** Поиск id продукта в семейной базе по имени (для связи ингредиента). */
+async function findDbProductIdByName(name: string, familyId: string): Promise<string | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from('products')
     .select('id')
     .eq('name', name)
+    .eq('family_id', familyId)
     .maybeSingle();
   assertNoError({ error });
   return data?.id ?? null;
@@ -438,7 +449,7 @@ export async function pushLegacyToSupabase(familyId: string, userId: string): Pr
     const key = p.name.trim().toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    await persistProduct(p);
+    await persistProduct(p, familyId);
   }
 }
 
@@ -512,7 +523,10 @@ export async function pullFromSupabase(
       .map((s) => ({ id: s.id, text: s.text, photoUrl: s.photo_url ?? undefined })),
   }));
 
-  const { data: prodRows, error: prodErr } = await supabase.from('products').select('*');
+  const { data: prodRows, error: prodErr } = await supabase
+    .from('products')
+    .select('*')
+    .eq('family_id', familyId);
   assertNoError({ error: prodErr });
   const products: Product[] = (prodRows ?? []).map((p) => ({
     id: p.id,
