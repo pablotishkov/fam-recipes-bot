@@ -2,6 +2,7 @@ import type { Category, Family, Product, Recipe, SessionUser } from '../types';
 import { CATEGORIES_KEY, FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, SYNCED_CATEGORIES_KEY, SYNCED_RECIPES_KEY, USER_KEY, uid } from './constants';
 import { seedProducts } from './seed';
 import { isSupabaseConfigured, supabase } from './supabase';
+import { deleteRecipePhotos } from './photos';
 
 /* ------------------------------------------------------------------ */
 /* Локальный кэш (localStorage).                                       */
@@ -120,8 +121,9 @@ export function saveRecipe(recipe: Recipe): Recipe {
 }
 
 export function deleteRecipe(id: string): void {
-  const recipes = read<Recipe[]>(RECIPES_KEY, []).filter((r) => r.id !== id);
-  write(RECIPES_KEY, recipes);
+  const recipes = read<Recipe[]>(RECIPES_KEY, []);
+  const target = recipes.find((r) => r.id === id);
+  write(RECIPES_KEY, recipes.filter((r) => r.id !== id));
   // Больше не считаем рецепт подтверждённым — на случай повторного создания.
   const synced = readSyncedIds();
   synced.delete(id);
@@ -132,6 +134,11 @@ export function deleteRecipe(id: string): void {
       .delete()
       .eq('id', id)
       .then(() => {}, (e) => console.error('recipe delete', e));
+    // Удаляем из Storage фото рецепта и его шагов.
+    if (target) {
+      const urls = [target.photoUrl, ...(target.steps ?? []).map((s) => s.photoUrl)];
+      deleteRecipePhotos(urls).catch((e) => console.error('photo delete', e));
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import type { Ingredient, Recipe, RecipeStep, SessionUser } from '../types';
 import { addProduct, getCategories, getProducts } from '../lib/store';
 import { uid } from '../lib/constants';
 import { sumKbju } from '../lib/nutrition';
+import { uploadRecipePhoto } from '../lib/photos';
 import { IngredientEditor } from '../components/IngredientEditor';
 import { KbjuBar } from '../components/KbjuBar';
 import { PhotoField } from '../components/PhotoField';
@@ -87,7 +88,12 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
 
       <div className="field">
         <label>Фото блюда</label>
-        <PhotoField value={photoUrl} onChange={setPhotoUrl} label="Добавить фото из галереи" />
+        <PhotoField
+          value={photoUrl}
+          onChange={setPhotoUrl}
+          label="Добавить фото из галереи"
+          onUpload={(f) => uploadRecipePhoto(f, user.familyId)}
+        />
       </div>
 
       <div className="section-title">Ингредиенты и КБЖУ</div>
@@ -111,7 +117,11 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
       </div>
 
       <div className="section-title">Приготовление</div>
-      <StepsEditor steps={steps} onChange={setSteps} />
+      <StepsEditor
+        steps={steps}
+        onChange={setSteps}
+        onUpload={(f) => uploadRecipePhoto(f, user.familyId)}
+      />
     </div>
   );
 }

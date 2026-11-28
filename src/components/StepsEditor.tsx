@@ -5,9 +5,11 @@ import { PhotoField } from './PhotoField';
 interface Props {
   steps: RecipeStep[];
   onChange: (steps: RecipeStep[]) => void;
+  /** Асинхронная загрузка фото шага (сжатие + Storage). */
+  onUpload?: (file: File) => Promise<string>;
 }
 
-export function StepsEditor({ steps, onChange }: Props) {
+export function StepsEditor({ steps, onChange, onUpload }: Props) {
   function update(id: string, patch: Partial<RecipeStep>) {
     onChange(steps.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
@@ -42,6 +44,7 @@ export function StepsEditor({ steps, onChange }: Props) {
               value={step.photoUrl}
               onChange={(dataUrl) => update(step.id, { photoUrl: dataUrl })}
               label="Фото шага (необязательно)"
+              onUpload={onUpload}
             />
           </div>
         </div>
