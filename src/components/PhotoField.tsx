@@ -49,7 +49,7 @@ export function PhotoField({ value, onChange, label, onUpload }: Props) {
         <img
           src={value}
           alt="Фото"
-          style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12, display: 'block' }}
+          style={{ width: '100%', maxHeight: 220, objectFit: 'contain', background: 'var(--surface-2)', borderRadius: 12, display: 'block' }}
         />
         <button
           className="btn btn-sm btn-danger"
