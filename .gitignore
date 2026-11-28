@@ -28,3 +28,6 @@ supabase/.env.local
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Временные файлы для ручного копирования в Supabase (не коммитить)
+tmp/
