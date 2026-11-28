@@ -47,6 +47,29 @@
   box-sizing: border-box;
 }
 
+/* Убираем дефолтный синий прямоугольник тап-хайлайта (игнорирует скругления) */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+
+/* Фокус-обводка только для клавиатуры (не для мыши/тача) */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 html,
 body {
   margin: 0;
@@ -130,18 +153,47 @@ select {
   padding: 10px 16px;
   border-radius: var(--radius-sm);
   font-weight: 600;
-  transition: opacity 0.15s;
   background: var(--surface-2);
   color: var(--text);
+  will-change: transform;
 }
 
 .btn:active {
-  opacity: 0.7;
+  transform: scale(0.96);
+  opacity: 0.85;
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Современный press-эффект по форме блока (а не синий прямоугольник) */
+.btn,
+.recipe-card,
+.chip,
+.fab,
+.fab-left {
+  transition: transform 0.12s ease, opacity 0.12s ease;
+  will-change: transform;
+}
+
+.recipe-card:active,
+.chip:active {
+  transform: scale(0.98);
+  opacity: 0.85;
+}
+
+.fab:active,
+.fab-left:active {
+  transform: scale(0.94);
+  opacity: 0.85;
+}
+
+/* Полноширинные строки — лёгкая подсветка фона вместо масштабирования */
+.autocomplete-item:active,
+.cat-picker-trigger:active {
+  background: var(--surface-2);
 }
 
 .btn-primary {
@@ -489,4 +541,91 @@ select {
 .cat-row .input {
   flex: 1;
   min-width: 0;
+}
+
+/* Выбор категории: триггер (Android) */
+.cat-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cat-picker-trigger span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-picker-chevron {
+  color: var(--text-2);
+}
+
+/* Bottom-sheet в стиле iOS (Android) */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  padding: 10px 0 16px;
+  animation: sheet-up 0.2s ease;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sheet-title {
+  text-align: center;
+  color: var(--text-2);
+  font-size: 13px;
+  padding: 6px 16px 10px;
+}
+
+.sheet-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 17px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet-option:active {
+  background: var(--surface-2);
+}
+
+.sheet-option-active {
+  color: var(--primary);
+}
+
+.sheet-check {
+  color: var(--primary);
+  font-weight: 700;
 }
