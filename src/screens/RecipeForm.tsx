@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Ingredient, Recipe, RecipeStep, SessionUser } from '../types';
-import { addProduct, getProducts } from '../lib/store';
+import { addProduct, getCategories, getProducts } from '../lib/store';
 import { uid } from '../lib/constants';
 import { sumKbju } from '../lib/nutrition';
 import { IngredientEditor } from '../components/IngredientEditor';
@@ -19,12 +19,14 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(initial?.photoUrl);
+  const [categoryId, setCategoryId] = useState<string>(initial?.categoryId ?? '');
   const [ingredients, setIngredients] = useState<Ingredient[]>(
     initial?.ingredients ?? [],
   );
   const [steps, setSteps] = useState<RecipeStep[]>(initial?.steps ?? []);
 
   const products = getProducts();
+  const categories = getCategories();
   const productsById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
     [products],
@@ -39,6 +41,7 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
       title: title.trim(),
       description: description.trim(),
       photoUrl,
+      categoryId: categoryId || undefined,
       ingredients: ingredients.filter((i) => i.productName.trim()),
       steps: steps.filter((s) => s.text.trim()),
       createdAt: initial?.createdAt ?? now,
@@ -70,6 +73,24 @@ export function RecipeForm({ initial, user, onSave, onCancel }: Props) {
           placeholder="Например, Сырники"
         />
       </div>
+
+      {categories.length > 0 && (
+        <div className="field">
+          <label>Категория</label>
+          <select
+            className="input"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+          >
+            <option value="">Общие</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="field">
         <label>Фото блюда</label>

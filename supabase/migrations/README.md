@@ -41,3 +41,4 @@
 |---|---|
 | `0001_init.sql` | Базовая схема: таблицы, RLS, триггеры, Realtime |
 | `20261128155108_save_recipe_rpc.sql` | Функция `save_recipe` (запись рецепта через RPC) |
+| `20261128161328_categories.sql` | Категории рецептов: таблица, `recipes.category_id`, RPC `save_category`/`delete_category`, `save_recipe` с категорией |

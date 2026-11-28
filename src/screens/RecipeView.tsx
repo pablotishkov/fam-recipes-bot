@@ -3,6 +3,7 @@ import type { Ingredient, Product, Recipe } from '../types';
 import { rescaleIngredients, sumKbju } from '../lib/nutrition';
 import { KbjuBar } from '../components/KbjuBar';
 import { AmountInput } from '../components/AmountInput';
+import { getCategories } from '../lib/store';
 
 interface Props {
   recipe: Recipe;
@@ -13,6 +14,9 @@ interface Props {
 }
 
 export function RecipeView({ recipe, products, onEdit, onDelete, onBack }: Props) {
+  const category = recipe.categoryId
+    ? getCategories().find((c) => c.id === recipe.categoryId)
+    : undefined;
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   // Базовые (как сохранено) — от них считается масштабирование.
@@ -51,6 +55,12 @@ export function RecipeView({ recipe, products, onEdit, onDelete, onBack }: Props
       </div>
 
       <h1 style={{ fontSize: 22 }}>{recipe.title}</h1>
+
+      {category && (
+        <span className="chip view-category" title={`Категория: ${category.name}`}>
+          {category.name}
+        </span>
+      )}
 
       {recipe.photoUrl && (
         <img

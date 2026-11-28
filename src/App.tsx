@@ -222,6 +222,9 @@ export default function App() {
     : null;
 
   const openList = useCallback(() => {
+    // Перечитываем кэш из localStorage: так сразу отражаются изменения,
+    // сделанные через store (например, удаление категории сняло её с рецептов).
+    setRecipes(getRecipes());
     setView({ name: 'list' });
   }, []);
 
@@ -236,6 +239,18 @@ export default function App() {
   const handleSave = useCallback(
     (recipe: Recipe) => {
       saveRecipe(recipe);
+      // Сразу кладём рецепт в состояние, чтобы страница рецепта (view) нашла
+      // его без перезагрузки. Раньше новый рецепт не попадал в стейт и
+      // открывался пустой экран.
+      setRecipes((prev) => {
+        const idx = prev.findIndex((r) => r.id === recipe.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = recipe;
+          return next;
+        }
+        return [recipe, ...prev];
+      });
       setView({ name: 'view', recipeId: recipe.id });
     },
     [],

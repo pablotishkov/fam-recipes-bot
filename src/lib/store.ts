@@ -1,5 +1,5 @@
-import type { Family, Product, Recipe, SessionUser } from '../types';
-import { FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, SYNCED_RECIPES_KEY, USER_KEY, uid } from './constants';
+import type { Category, Family, Product, Recipe, SessionUser } from '../types';
+import { CATEGORIES_KEY, FAMILIES_KEY, PRODUCTS_KEY, RECIPES_KEY, SYNCED_CATEGORIES_KEY, SYNCED_RECIPES_KEY, USER_KEY, uid } from './constants';
 import { seedProducts } from './seed';
 import { isSupabaseConfigured, supabase } from './supabase';
 
@@ -36,6 +36,14 @@ function readSyncedIds(): Set<string> {
 
 function writeSyncedIds(ids: Iterable<string>): void {
   write(SYNCED_RECIPES_KEY, [...ids]);
+}
+
+function readSyncedCategoryIds(): Set<string> {
+  return new Set(read<string[]>(SYNCED_CATEGORIES_KEY, []));
+}
+
+function writeSyncedCategoryIds(ids: Iterable<string>): void {
+  write(SYNCED_CATEGORIES_KEY, [...ids]);
 }
 
 /* ---------- Продукты (база КБЖУ) ---------- */
@@ -115,6 +123,68 @@ export function deleteRecipe(id: string): void {
       .delete()
       .eq('id', id)
       .then(() => {}, (e) => console.error('recipe delete', e));
+  }
+}
+
+/* ---------- Категории рецептов ---------- */
+
+export function getCategories(): Category[] {
+  return read<Category[]>(CATEGORIES_KEY, []).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export function addCategory(name: string, familyId?: string): Category {
+  const category: Category = { id: uid(), name: name.trim(), createdAt: Date.now() };
+  write(CATEGORIES_KEY, [...getCategories(), category]);
+  if (isSupabaseConfigured) {
+    persistCategory(category, familyId)
+      .then(() => {
+        const synced = readSyncedCategoryIds();
+        synced.add(category.id);
+        writeSyncedCategoryIds(synced);
+      })
+      .catch((e) => {
+        console.error('category push', e);
+        window.alert(`Не удалось сохранить категорию в облако: ${e.message}`);
+      });
+  }
+  return category;
+}
+
+export function updateCategory(id: string, name: string, familyId?: string): void {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  write(
+    CATEGORIES_KEY,
+    getCategories().map((c) => (c.id === id ? { ...c, name: trimmed } : c)),
+  );
+  const cat = getCategories().find((c) => c.id === id);
+  if (isSupabaseConfigured && cat) {
+    persistCategory(cat, familyId).catch((e) => {
+      console.error('category push', e);
+      window.alert(`Не удалось сохранить категорию в облако: ${e.message}`);
+    });
+  }
+}
+
+export function deleteCategory(id: string, familyId?: string): void {
+  write(
+    CATEGORIES_KEY,
+    getCategories().filter((c) => c.id !== id),
+  );
+  // Снять категорию с рецептов, которые её использовали.
+  const recipes = read<Recipe[]>(RECIPES_KEY, []);
+  let changed = false;
+  const next = recipes.map((r) => {
+    if (r.categoryId !== id) return r;
+    changed = true;
+    return { ...r, categoryId: undefined };
+  });
+  if (changed) write(RECIPES_KEY, next);
+  const synced = readSyncedCategoryIds();
+  synced.delete(id);
+  writeSyncedCategoryIds(synced);
+  if (isSupabaseConfigured) {
+    deleteCategoryFromSupabase(id, familyId).catch((e) => console.error('category delete', e));
   }
 }
 
@@ -254,10 +324,32 @@ async function persistRecipe(recipe: Recipe): Promise<void> {
     p_title: recipe.title,
     p_description: recipe.description,
     p_photo_url: recipe.photoUrl ?? null,
+    p_category_id: recipe.categoryId ?? null,
     p_created_at: toIso(recipe.createdAt),
     p_updated_at: toIso(recipe.updatedAt),
     p_ingredients: resolved,
     p_steps: steps,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Апсерт категории в БД семьи (через RPC save_category). */
+async function persistCategory(category: Category, familyId?: string): Promise<void> {
+  if (!supabase || !familyId) return;
+  const { error } = await supabase.rpc('save_category', {
+    p_id: category.id,
+    p_family_id: familyId,
+    p_name: category.name,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Удаление категории из БД (RPC также снимает её с рецептов). */
+async function deleteCategoryFromSupabase(id: string, familyId?: string): Promise<void> {
+  if (!supabase || !familyId) return;
+  const { error } = await supabase.rpc('delete_category', {
+    p_id: id,
+    p_family_id: familyId,
   });
   if (error) throw new Error(error.message);
 }
@@ -331,6 +423,14 @@ export async function pushLegacyToSupabase(familyId: string, userId: string): Pr
     await persistRecipe({ ...r, familyId, createdBy: r.createdBy ?? userId });
   }
 
+  // Категории — только те, что ещё не подтверждены в БД (удалённые из БД
+  // другим членом семьи не перезаписываются обратно).
+  const syncedCategories = readSyncedCategoryIds();
+  for (const c of getCategories()) {
+    if (syncedCategories.has(c.id)) continue;
+    await persistCategory(c, familyId);
+  }
+
   const customs = read<Product[]>(PRODUCTS_KEY, []);
   const seen = new Set<string>();
   for (const p of customs) {
@@ -347,9 +447,11 @@ export async function pushLegacyToSupabase(familyId: string, userId: string): Pr
  * Бросает исключение при ошибке — вызывающий код не должен перезаписывать
  * локальный кэш результатом неуспешной синхронизации.
  */
-export async function pullFromSupabase(familyId: string): Promise<{ recipes: Recipe[]; products: Product[] }> {
+export async function pullFromSupabase(
+  familyId: string,
+): Promise<{ recipes: Recipe[]; products: Product[]; categories: Category[] }> {
   if (!supabase) {
-    return { recipes: getRecipes(), products: getProducts() };
+    return { recipes: getRecipes(), products: getProducts(), categories: getCategories() };
   }
 
   const { data: rows, error: rowsErr } = await supabase
@@ -392,6 +494,7 @@ export async function pullFromSupabase(familyId: string): Promise<{ recipes: Rec
     photoUrl: r.photo_url ?? undefined,
     familyId: r.family_id ?? undefined,
     createdBy: r.created_by ?? undefined,
+    categoryId: r.category_id ?? undefined,
     createdAt: toMs(r.created_at),
     updatedAt: toMs(r.updated_at),
     ingredients: (ingByRecipe.get(r.id) ?? [])
@@ -422,28 +525,45 @@ export async function pullFromSupabase(familyId: string): Promise<{ recipes: Rec
     gramsPerUnit: p.grams_per_unit ?? undefined,
   }));
 
+  const { data: catRows, error: catErr } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('family_id', familyId);
+  assertNoError({ error: catErr });
+  const categories: Category[] = (catRows ?? [])
+    .map((c) => ({ id: c.id, name: c.name, createdAt: toMs(c.created_at) }))
+    .sort((a, b) => a.createdAt - b.createdAt);
+
   // Защита от потери данных: не затираем непустой локальный кэш пустым
   // результатом синхронизации. Сценарий: push по какой-то причине не записался
   // в БД (RLS, сеть), а pull уже вернул пустоту — перезапись стёрла бы локальные
   // данные. При срабатывании оставляем локальный кэш и данные для рендера.
   const localRecipes = read<Recipe[]>(RECIPES_KEY, []);
   const localProducts = read<Product[]>(PRODUCTS_KEY, []);
+  const localCategories = read<Category[]>(CATEGORIES_KEY, []);
   const emptyRecipes = recipes.length === 0 && localRecipes.length > 0;
   const emptyProducts = products.length === 0 && localProducts.length > 0;
-  if (emptyRecipes || emptyProducts) {
+  const emptyCategories = categories.length === 0 && localCategories.length > 0;
+  if (emptyRecipes || emptyProducts || emptyCategories) {
     console.warn(
-      `Синхронизация семьи вернула пустое значение${emptyRecipes && emptyProducts ? '' : emptyRecipes ? ' (рецепты)' : ' (продукты)'} при непустом локальном кэше — локальные данные не затираются. Проверьте запись в БД (RLS/права).`,
+      `Синхронизация семьи вернула пустое значение${[
+        emptyRecipes ? ' (рецепты)' : '',
+        emptyProducts ? ' (продукты)' : '',
+        emptyCategories ? ' (категории)' : '',
+      ].join('')} при непустом локальном кэше — локальные данные не затираются. Проверьте запись в БД (RLS/права).`,
     );
     return {
       recipes: [...localRecipes].sort((a, b) => b.updatedAt - a.updatedAt),
       products: getProducts(),
+      categories: getCategories(),
     };
   }
 
   write(RECIPES_KEY, recipes);
   write(PRODUCTS_KEY, products);
-  // Все рецепты из успешного pull считаем подтверждёнными в БД: при заходе
-  // они больше не будут перезаписываться обратно.
+  write(CATEGORIES_KEY, categories);
+  // Все рецепты и категории из успешного pull считаем подтверждёнными в БД.
   writeSyncedIds(recipes.map((r) => r.id));
-  return { recipes, products };
+  writeSyncedCategoryIds(categories.map((c) => c.id));
+  return { recipes, products, categories };
 }

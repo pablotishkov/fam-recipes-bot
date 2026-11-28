@@ -53,6 +53,13 @@ export interface RecipeStep {
   photoUrl?: string;
 }
 
+/** Категория рецепта (семейная). */
+export interface Category {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 /** Рецепт. */
 export interface Recipe {
   id: string;
@@ -65,6 +72,8 @@ export interface Recipe {
   updatedAt: number;
   familyId?: string;
   createdBy?: string;
+  /** Id категории (undefined = «Общие» / без категории). */
+  categoryId?: string;
 }
 
 /** Семья. Имя (напр. «Тишковы») — для отображения; inviteCode — уникальный код входа. */

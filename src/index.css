@@ -399,3 +399,59 @@ select {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* Чипсы категорий на главном экране */
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 12px;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.card-category {
+  margin-left: 8px;
+}
+
+/* Статичный бейдж категории на странице рецепта (не интерактивный) */
+.view-category {
+  cursor: default;
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
+/* Строка управления категорией в настройках семьи */
+.cat-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.cat-row .input {
+  flex: 1;
+  min-width: 0;
+}
