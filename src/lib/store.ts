@@ -368,7 +368,10 @@ async function persistProduct(product: Product, familyId?: string): Promise<void
   if (!supabase || !familyId) return;
   const res = await supabase.from('products').upsert(
     {
-      id: product.id,
+      // id намеренно не передаём: у стандартных продуктов id детерминированный
+      // (одинаковый у всех), а первичный ключ глобальный. Уникальность строки
+      // обеспечивает (family_id, name), id пусть генерирует БД. Связь
+      // ингредиентов идёт по имени, поэтому локальный id не нужен.
       family_id: familyId,
       name: product.name,
       calories: product.kbju.calories,
