@@ -20,16 +20,24 @@ create table if not exists public.categories (
   created_at timestamptz not null default now()
 );
 
+-- Права на чтение для клиента. Категории созданы позже базовой миграции,
+-- поэтому grant all on all tables (в 0001_init.sql) их не покрывает.
+grant all on table public.categories to anon, authenticated, service_role;
+
 -- ---------- Категория у рецепта ----------
 alter table public.recipes
   add column if not exists category_id uuid references public.categories (id);
 
 -- ---------- RLS на categories (на всякий случай; основная защита — RPC) ----------
+-- Политики по family_id напрямую (is_family_member рассчитан на рецепты и
+-- по id категории вернул бы false).
 alter table public.categories enable row level security;
 create policy "categories_read" on public.categories
-  for select using (public.is_family_member(id));
+  for select using (family_id in (select family_id from public.profiles where id = auth.uid()));
 create policy "categories_write" on public.categories
-  for all using (public.is_family_member(id)) with check (public.is_family_member(id));
+  for all
+  using (family_id in (select family_id from public.profiles where id = auth.uid()))
+  with check (family_id in (select family_id from public.profiles where id = auth.uid()));
 
 -- ---------- save_category: создание/переименование категории ----------
 create or replace function public.save_category(
