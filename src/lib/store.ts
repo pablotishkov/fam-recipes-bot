@@ -181,6 +181,14 @@ export function leaveFamily(): void {
 /* Supabase: синхронизация семьи                                       */
 /* ================================================================== */
 
+/** Бросает исключение, если Supabase вернул ошибку (RLS, сеть и т.п.). */
+function assertNoError(res: { error: unknown }): void {
+  if (res.error) {
+    const msg = (res.error as { message?: string }).message ?? 'Ошибка Supabase';
+    throw new Error(msg);
+  }
+}
+
 /** Апсерт рецепта со всеми ингредиентами и шагами (идемпотентно по id). */
 async function persistRecipe(recipe: Recipe): Promise<void> {
   if (!supabase) return;
@@ -188,7 +196,7 @@ async function persistRecipe(recipe: Recipe): Promise<void> {
   if (!familyId) return;
 
   // 1. Рецепт — upsert по id (повторная выгрузка не создаёт дубли).
-  await supabase.from('recipes').upsert(
+  const recipeRes = await supabase.from('recipes').upsert(
     {
       id: recipe.id,
       title: recipe.title,
@@ -201,10 +209,13 @@ async function persistRecipe(recipe: Recipe): Promise<void> {
     },
     { onConflict: 'id' },
   );
+  assertNoError(recipeRes);
 
   // 2. Ингредиенты и шаги — замена целиком (перезапись дочерних строк).
-  await supabase.from('ingredients').delete().eq('recipe_id', recipe.id);
-  await supabase.from('steps').delete().eq('recipe_id', recipe.id);
+  const delIng = await supabase.from('ingredients').delete().eq('recipe_id', recipe.id);
+  assertNoError(delIng);
+  const delSteps = await supabase.from('steps').delete().eq('recipe_id', recipe.id);
+  assertNoError(delSteps);
 
   const ings = recipe.ingredients ?? [];
   if (ings.length) {
@@ -222,12 +233,13 @@ async function persistRecipe(recipe: Recipe): Promise<void> {
         };
       }),
     );
-    await supabase.from('ingredients').insert(rows);
+    const insIng = await supabase.from('ingredients').insert(rows);
+    assertNoError(insIng);
   }
 
   const steps = recipe.steps ?? [];
   if (steps.length) {
-    await supabase.from('steps').insert(
+    const insSteps = await supabase.from('steps').insert(
       steps.map((s, position) => ({
         recipe_id: recipe.id,
         position,
@@ -235,13 +247,14 @@ async function persistRecipe(recipe: Recipe): Promise<void> {
         photo_url: s.photoUrl ?? null,
       })),
     );
+    assertNoError(insSteps);
   }
 }
 
 /** Апсерт продукта в общую базу по уникальному имени (без дублей). */
 async function persistProduct(product: Product): Promise<void> {
   if (!supabase) return;
-  await supabase.from('products').upsert(
+  const res = await supabase.from('products').upsert(
     {
       name: product.name,
       calories: product.kbju.calories,
@@ -252,29 +265,35 @@ async function persistProduct(product: Product): Promise<void> {
     },
     { onConflict: 'name' },
   );
+  assertNoError(res);
 }
 
 /** Поиск id продукта в общей базе по имени (для связи ингредиента). */
 async function findDbProductIdByName(name: string): Promise<string | null> {
   if (!supabase) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('products')
     .select('id')
     .eq('name', name)
     .maybeSingle();
+  assertNoError({ error });
   return data?.id ?? null;
 }
 
 /**
  * Выгрузка локальных (уже существующих) данных в БД при первом входе.
  * Рецепты апсертятся по id (идемпотентно), продукты — по имени (дедупликация).
+ *
+ * Важно: `familyId` принудительно берётся из текущей семьи пользователя, а не
+ * из сохранённого в старом локальном рецепте (там может лежать uuid другой —
+ * демо/локальной — семьи, и вставка будет отклонена RLS).
  */
 export async function pushLegacyToSupabase(familyId: string, userId: string): Promise<void> {
   if (!supabase) return;
 
   const recipes = read<Recipe[]>(RECIPES_KEY, []);
   for (const r of recipes) {
-    await persistRecipe({ ...r, familyId: r.familyId ?? familyId, createdBy: r.createdBy ?? userId });
+    await persistRecipe({ ...r, familyId, createdBy: r.createdBy ?? userId });
   }
 
   const customs = read<Product[]>(PRODUCTS_KEY, []);
@@ -290,19 +309,29 @@ export async function pushLegacyToSupabase(familyId: string, userId: string): Pr
 /**
  * Подтягивает рецепты и продукты семьи из БД в локальный кэш.
  * Возвращает данные, чтобы App мог обновить состояние и перерисоваться.
+ * Бросает исключение при ошибке — вызывающий код не должен перезаписывать
+ * локальный кэш результатом неуспешной синхронизации.
  */
 export async function pullFromSupabase(familyId: string): Promise<{ recipes: Recipe[]; products: Product[] }> {
   if (!supabase) {
     return { recipes: getRecipes(), products: getProducts() };
   }
 
-  const { data: rows } = await supabase.from('recipes').select('*').eq('family_id', familyId);
+  const { data: rows, error: rowsErr } = await supabase
+    .from('recipes')
+    .select('*')
+    .eq('family_id', familyId);
+  assertNoError({ error: rowsErr });
   const ids = (rows ?? []).map((r) => r.id);
 
-  const [{ data: ingRows }, { data: stepRows }] = await Promise.all([
-    ids.length ? supabase.from('ingredients').select('*').in('recipe_id', ids) : Promise.resolve({ data: [] }),
-    ids.length ? supabase.from('steps').select('*').in('recipe_id', ids) : Promise.resolve({ data: [] }),
+  const [ingRes, stepRes] = await Promise.all([
+    ids.length ? supabase.from('ingredients').select('*').in('recipe_id', ids) : Promise.resolve({ data: [], error: null }),
+    ids.length ? supabase.from('steps').select('*').in('recipe_id', ids) : Promise.resolve({ data: [], error: null }),
   ]);
+  assertNoError(ingRes);
+  assertNoError(stepRes);
+  const ingRows = ingRes.data;
+  const stepRows = stepRes.data;
 
   const ingByRecipe = new Map<string, typeof ingRows>();
   for (const i of ingRows ?? []) {
@@ -344,7 +373,8 @@ export async function pullFromSupabase(familyId: string): Promise<{ recipes: Rec
       .map((s) => ({ id: s.id, text: s.text, photoUrl: s.photo_url ?? undefined })),
   }));
 
-  const { data: prodRows } = await supabase.from('products').select('*');
+  const { data: prodRows, error: prodErr } = await supabase.from('products').select('*');
+  assertNoError({ error: prodErr });
   const products: Product[] = (prodRows ?? []).map((p) => ({
     id: p.id,
     name: p.name,
@@ -356,6 +386,24 @@ export async function pullFromSupabase(familyId: string): Promise<{ recipes: Rec
     },
     gramsPerUnit: p.grams_per_unit ?? undefined,
   }));
+
+  // Защита от потери данных: не затираем непустой локальный кэш пустым
+  // результатом синхронизации. Сценарий: push по какой-то причине не записался
+  // в БД (RLS, сеть), а pull уже вернул пустоту — перезапись стёрла бы локальные
+  // данные. При срабатывании оставляем локальный кэш и данные для рендера.
+  const localRecipes = read<Recipe[]>(RECIPES_KEY, []);
+  const localProducts = read<Product[]>(PRODUCTS_KEY, []);
+  const emptyRecipes = recipes.length === 0 && localRecipes.length > 0;
+  const emptyProducts = products.length === 0 && localProducts.length > 0;
+  if (emptyRecipes || emptyProducts) {
+    console.warn(
+      `Синхронизация семьи вернула пустое значение${emptyRecipes && emptyProducts ? '' : emptyRecipes ? ' (рецепты)' : ' (продукты)'} при непустом локальном кэше — локальные данные не затираются. Проверьте запись в БД (RLS/права).`,
+    );
+    return {
+      recipes: [...localRecipes].sort((a, b) => b.updatedAt - a.updatedAt),
+      products: getProducts(),
+    };
+  }
 
   write(RECIPES_KEY, recipes);
   write(PRODUCTS_KEY, products);
