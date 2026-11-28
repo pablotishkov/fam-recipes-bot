@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Recipe } from '../types';
 import { RecipeCard } from '../components/RecipeCard';
+import { fuzzyFilter } from '../lib/search';
 
 interface Props {
   recipes: Recipe[];
@@ -12,11 +13,10 @@ interface Props {
 export function ListScreen({ recipes, onOpen, onAdd, onManageProducts }: Props) {
   const [query, setQuery] = useState('');
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return recipes;
-    return recipes.filter((r) => r.title.toLowerCase().includes(q));
-  }, [recipes, query]);
+  const filtered = useMemo(
+    () => fuzzyFilter(recipes, query, (r) => r.title),
+    [recipes, query],
+  );
 
   return (
     <div>

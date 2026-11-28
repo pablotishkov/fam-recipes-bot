@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { Product } from '../types';
 import { addProduct, getProducts, updateProduct } from '../lib/store';
 import { formatKbju } from '../lib/nutrition';
+import { fuzzyFilter } from '../lib/search';
 
 interface Props {
   onBack: () => void;
@@ -34,10 +35,7 @@ export function ProductsScreen({ onBack }: Props) {
   const [query, setQuery] = useState('');
   const formRef = useRef<HTMLDivElement>(null);
   const products = getProducts();
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? products.filter((p) => p.name.toLowerCase().includes(q))
-    : products;
+  const filtered = fuzzyFilter(products, query, (p) => p.name);
 
   function openAdd() {
     setEditingId(null);
@@ -160,7 +158,7 @@ export function ProductsScreen({ onBack }: Props) {
 
       {filtered.length === 0 && (
         <p className="empty" style={{ padding: 24 }}>
-          {q
+          {query.trim()
             ? 'Ничего не найдено по запросу.'
             : 'Продуктов пока нет. Добавьте первый через кнопку +.'}
         </p>

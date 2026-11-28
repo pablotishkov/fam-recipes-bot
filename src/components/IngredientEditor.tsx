@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Ingredient, Kbju, Product, Unit } from '../types';
 import { UNITS, uid } from '../lib/constants';
 import { AmountInput } from './AmountInput';
+import { fuzzyFilter } from '../lib/search';
 
 interface Props {
   ingredients: Ingredient[];
@@ -23,6 +24,14 @@ const emptyDraft: KbjuDraft = { calories: '', protein: '', fat: '', carbs: '' };
 export function IngredientEditor({ ingredients, products, onChange, onAddProduct }: Props) {
   // Черновики КБЖУ для продуктов, которых нет в базе (ключ — id ингредиента).
   const [drafts, setDrafts] = useState<Record<string, KbjuDraft>>({});
+  // Интредиент, у которого открыт выпадающий список продуктов.
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const openIng = ingredients.find((i) => i.id === openId);
+  const suggestions =
+    openIng && openIng.productName.trim()
+      ? fuzzyFilter(products, openIng.productName, (p) => p.name).slice(0, 6)
+      : [];
 
   function update(id: string, patch: Partial<Ingredient>) {
     onChange(ingredients.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -79,14 +88,38 @@ export function IngredientEditor({ ingredients, products, onChange, onAddProduct
         const product = products.find((p) => p.id === ing.productId);
         return (
           <div key={ing.id} className="card" style={{ marginBottom: 8, padding: 12 }}>
-            <input
-              className="input"
-              style={{ width: '100%', marginBottom: 8 }}
-              list="products-datalist"
-              value={ing.productName}
-              placeholder="Продукт"
-              onChange={(e) => onProductName(ing.id, e.target.value)}
-            />
+            <div className="autocomplete">
+              <input
+                className="input"
+                style={{ width: '100%', marginBottom: 8 }}
+                value={ing.productName}
+                placeholder="Продукт"
+                onChange={(e) => onProductName(ing.id, e.target.value)}
+                onFocus={() => setOpenId(ing.id)}
+                onBlur={() =>
+                  setTimeout(() => setOpenId((cur) => (cur === ing.id ? null : cur)), 150)
+                }
+              />
+              {openId === ing.id && suggestions.length > 0 && (
+                <div className="autocomplete-list">
+                  {suggestions.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="autocomplete-item"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onProductName(ing.id, p.name);
+                        setOpenId(null);
+                      }}
+                    >
+                      <span className="autocomplete-name">{p.name}</span>
+                      <span className="autocomplete-hint">{p.kbju.calories} ккал/100г</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="ingredient-row" style={{ gridTemplateColumns: '1fr 84px 96px 40px' }}>
               <span className="muted" style={{ fontSize: 13, alignSelf: 'center' }}>Количество</span>
               <AmountInput
@@ -131,14 +164,6 @@ export function IngredientEditor({ ingredients, products, onChange, onAddProduct
           </div>
         );
       })}
-
-      <datalist id="products-datalist">
-        {products.map((p) => (
-          <option key={p.id} value={p.name}>
-            {p.kbju.calories} ккал/100г
-          </option>
-        ))}
-      </datalist>
 
       <button className="btn btn-block" onClick={add}>
         Добавить ингредиент

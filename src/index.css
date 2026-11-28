@@ -350,3 +350,52 @@ select {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* Кастомный fuzzy-автокомплит ингредиентов */
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% - 8px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.autocomplete-item:hover {
+  background: var(--surface-2);
+}
+
+.autocomplete-name {
+  font-weight: 500;
+}
+
+.autocomplete-hint {
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
