@@ -193,66 +193,51 @@ function assertNoError(res: { error: unknown }): void {
   }
 }
 
-/** Апсерт рецепта со всеми ингредиентами и шагами (идемпотентно по id). */
+/**
+ * Апсерт рецепта со всеми ингредиентами и шагами (идемпотентно по id).
+ *
+ * Пишем через RPC save_recipe (security definer): она атомарно сохраняет
+ * рецепт + ингредиенты + шаги и сама проверяет членство в семье. Это
+ * надёжнее, чем пер-рядные RLS-политики с `with check` на recipes_insert,
+ * которые могли отклонять вставку даже при совпадающем family_id.
+ */
 async function persistRecipe(recipe: Recipe): Promise<void> {
   if (!supabase) return;
   const familyId = recipe.familyId;
   if (!familyId) return;
 
-  // 1. Рецепт — upsert по id (повторная выгрузка не создаёт дубли).
-  const recipeRes = await supabase.from('recipes').upsert(
-    {
-      id: recipe.id,
-      title: recipe.title,
-      description: recipe.description,
-      photo_url: recipe.photoUrl ?? null,
-      family_id: familyId,
-      created_by: recipe.createdBy ?? null,
-      created_at: toIso(recipe.createdAt),
-      updated_at: toIso(recipe.updatedAt),
-    },
-    { onConflict: 'id' },
-  );
-  assertNoError(recipeRes);
-
-  // 2. Ингредиенты и шаги — замена целиком (перезапись дочерних строк).
-  const delIng = await supabase.from('ingredients').delete().eq('recipe_id', recipe.id);
-  assertNoError(delIng);
-  const delSteps = await supabase.from('steps').delete().eq('recipe_id', recipe.id);
-  assertNoError(delSteps);
-
   const ings = recipe.ingredients ?? [];
-  if (ings.length) {
-    // Сопоставляем product_id с существующей записью в общей базе по имени.
-    const rows = await Promise.all(
-      ings.map(async (ing, position) => {
-        const productId = await findDbProductIdByName(ing.productName);
-        return {
-          recipe_id: recipe.id,
-          product_id: productId,
-          product_name: ing.productName,
-          amount: ing.amount,
-          unit: ing.unit,
-          position,
-        };
-      }),
-    );
-    const insIng = await supabase.from('ingredients').insert(rows);
-    assertNoError(insIng);
-  }
-
-  const steps = recipe.steps ?? [];
-  if (steps.length) {
-    const insSteps = await supabase.from('steps').insert(
-      steps.map((s, position) => ({
-        recipe_id: recipe.id,
+  const resolved = await Promise.all(
+    ings.map(async (ing, position) => {
+      const productId = await findDbProductIdByName(ing.productName);
+      return {
+        product_id: productId,
+        product_name: ing.productName,
+        amount: ing.amount,
+        unit: ing.unit,
         position,
-        text: s.text,
-        photo_url: s.photoUrl ?? null,
-      })),
-    );
-    assertNoError(insSteps);
-  }
+      };
+    }),
+  );
+  const steps = (recipe.steps ?? []).map((s, position) => ({
+    position,
+    text: s.text,
+    photo_url: s.photoUrl ?? null,
+  }));
+
+  const { error } = await supabase.rpc('save_recipe', {
+    p_id: recipe.id,
+    p_family_id: familyId,
+    p_created_by: recipe.createdBy ?? null,
+    p_title: recipe.title,
+    p_description: recipe.description,
+    p_photo_url: recipe.photoUrl ?? null,
+    p_created_at: toIso(recipe.createdAt),
+    p_updated_at: toIso(recipe.updatedAt),
+    p_ingredients: resolved,
+    p_steps: steps,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /** Апсерт продукта в общую базу по уникальному имени (без дублей). */
