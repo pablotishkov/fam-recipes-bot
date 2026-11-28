@@ -120,11 +120,11 @@ export function PersonalizationScreen({ user, onBack }: Props) {
           <button className="btn btn-primary btn-block" type="button">
             Кнопка
           </button>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 }}>
             <span className="chip chip-active">Чипс</span>
             <span className="kbju-chip">
               <span className="v" style={{ color: 'var(--primary)' }}>
-                350
+                350{' '}
               </span>
               <span className="l">ккал</span>
             </span>

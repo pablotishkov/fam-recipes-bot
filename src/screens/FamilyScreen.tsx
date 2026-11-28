@@ -131,7 +131,7 @@ export function FamilyScreen({ family, onBack, onLeave, onRename, onOpenPersonal
           Отправьте членам семьи ссылку на бота
         </div>
         <button className="btn btn-block" onClick={() => copyText(botLink, 'bot')}>
-          {copied === 'bot' ? '✓ Скопировано' : botLink}
+          {copied === 'bot' ? '✓ Ссылка скопирована' : botLink}
         </button>
       </div>
 
