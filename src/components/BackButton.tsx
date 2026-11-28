@@ -24,6 +24,7 @@ export function BackButton({ onClick, label = 'Назад' }: Props) {
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
+          style={{ display: 'block' }}
         >
           <polyline points="15 18 9 12 15 6" />
         </svg>
