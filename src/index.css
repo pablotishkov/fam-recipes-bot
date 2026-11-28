@@ -436,6 +436,9 @@ select {
   padding: 3px 8px;
   font-size: 12px;
   font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-self: flex-start;
 }
 
 /* Кастомный fuzzy-автокомплит ингредиентов */
