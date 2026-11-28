@@ -16,6 +16,8 @@ import { RecipeForm } from './screens/RecipeForm';
 import { RecipeView } from './screens/RecipeView';
 import { ProductsScreen } from './screens/ProductsScreen';
 import { FamilyScreen } from './screens/FamilyScreen';
+import { PersonalizationScreen } from './screens/PersonalizationScreen';
+import { applyAccent, getAccent } from './lib/prefs';
 
 type View =
   | { name: 'onboarding' }
@@ -24,7 +26,8 @@ type View =
   | { name: 'form'; recipeId?: string }
   | { name: 'view'; recipeId: string }
   | { name: 'products' }
-  | { name: 'family' };
+  | { name: 'family' }
+  | { name: 'personalization' };
 
 /** Промежуточные экраны аутентификации. */
 function AuthLoading() {
@@ -57,6 +60,11 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [recipes, setRecipes] = useState<Recipe[]>(() => getRecipes());
   const [products, setProducts] = useState<Product[]>(() => getProducts());
+
+  // Применяем персональный акцентный цвет пользователя при входе/смене.
+  useEffect(() => {
+    if (user) applyAccent(getAccent(user.id), currentColorScheme());
+  }, [user]);
 
   /**
    * После входа (Supabase-режим): выгружаем существующие локальные данные в БД
@@ -98,6 +106,9 @@ export default function App() {
   useEffect(() => {
     initTelegram();
     document.documentElement.setAttribute('data-theme', currentColorScheme());
+    // Применяем персональный акцентный цвет (если задан), сразу после темы.
+    const u = getUser();
+    if (u) applyAccent(getAccent(u.id), currentColorScheme());
 
     // В Supabase-режиме входим через Telegram при старте.
     if (isSupabaseConfigured) {
@@ -335,8 +346,13 @@ export default function App() {
           onBack={openList}
           onLeave={handleLeave}
           onRename={handleRename}
+          onOpenPersonalization={() => setView({ name: 'personalization' })}
         />
       );
+  }
+
+  if (view.name === 'personalization') {
+    return <PersonalizationScreen user={user} onBack={() => setView({ name: 'family' })} />;
   }
 
   if (view.name === 'form') {

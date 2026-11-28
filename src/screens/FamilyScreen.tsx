@@ -9,9 +9,11 @@ interface Props {
   onLeave: () => void;
   /** Переименование семьи (в Supabase-режиме — в БД, иначе — localStorage). */
   onRename: (name: string) => void;
+  /** Переход на экран персональных настроек. */
+  onOpenPersonalization: () => void;
 }
 
-export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
+export function FamilyScreen({ family, onBack, onLeave, onRename, onOpenPersonalization }: Props) {
   const [name, setName] = useState(family.name);
   const [saved, setSaved] = useState(false);
   const [cats, setCats] = useState<Category[]>(() => getCategories());
@@ -94,7 +96,7 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
   }
 
   return (
-    <div>
+    <div style={{ paddingBottom: 20 }}>
       <div className="topbar">
         <BackButton onClick={onBack} />
         <h1 style={{ fontSize: 17 }}>Настройки семьи</h1>
@@ -165,6 +167,17 @@ export function FamilyScreen({ family, onBack, onLeave, onRename }: Props) {
           Все члены семьи видят и редактируют общие рецепты. Приглашайте новых по
           коду выше.
         </p>
+      </div>
+
+      <div className="section-title">Персонализация</div>
+      <div className="card">
+        <p className="muted" style={{ margin: '0 0 10px' }}>
+          Настройки под себя — они применяются только для вас и не зависят от
+          семьи.
+        </p>
+        <button className="btn btn-block" onClick={onOpenPersonalization}>
+          Настроить цвет и тему
+        </button>
       </div>
 
       <div className="section-title">Категории рецептов</div>

@@ -629,3 +629,55 @@ select {
   color: var(--primary);
   font-weight: 700;
 }
+
+/* ---------- Персонализация ---------- */
+
+/* Общие стили ползунков */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  margin-top: -8px;
+}
+
+input[type='range']::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Трек оттенка — радуга, задаётся инлайн-градиентом в компоненте */
+input[type='range'].range-hue::-webkit-slider-runnable-track {
+  background: inherit;
+}
+
+input[type='range'].range-hue::-moz-range-track {
+  background: inherit;
+}
